@@ -212,12 +212,12 @@ test('revoke: host exposes GET /applied + POST /revoke and keeps the disposer', 
   assert.match(hostSrc, /const POST_ROUTES = \[[^\]]*'revoke'[^\]]*\]/, 'revoke must be POST-able')
   assert.match(hostSrc, /route === 'applied' && method === 'GET'/, 'GET /applied route missing')
   assert.match(hostSrc, /route === 'revoke'/, 'POST /revoke route missing')
-  assert.match(hostSrc, /rememberIntroduced\(sessionId, r\.name, r\.dispose\)/,
+  assert.match(hostSrc, /rememberIntroduced\(key, r\.name, r\.dispose\)/,
     'introduce must remember the disposer for later revocation')
   assert.match(hostSrc, /function revokeIntroduced/, 'revoke helper missing')
   assert.match(hostSrc, /skills\.register\(/, 'introduce registers on the session-scoped skills service')
   // GET /applied answers with the session's applied list; the client renders it.
-  assert.match(clientSrc, /api\('\/applied'\)/, 'client must fetch /applied to seed the chips')
+  assert.match(clientSrc, /api\(\`\/applied\${q}\`\)/, 'client must fetch /applied to seed the chips')
   assert.match(clientSrc, /api\('\/revoke'/, 'client must call /revoke from the chip ×')
   assert.match(clientSrc, /AppliedChips/, 'client must render applied chips')
 })
@@ -247,14 +247,20 @@ test('reopen seeds the selection with the session applied skills', () => {
   // session (GET /applied), otherwise users re-select them blindly.
   assert.match(clientSrc, /Seed the selection with the skills already applied/,
     'selection seeding effect missing')
-  assert.match(clientSrc, /api\('\/applied'\)[\s\S]{0,400}setSelected\(new Set\(names\)\)/,
+  assert.match(clientSrc, /api\(`\/applied\$\{q\}`\)[\s\S]{0,700}setSelected\(new Set\(names\)\)/,
     'seeding must fetch /applied and put the names into `selected`')
   // Guard rails: only seed a BLANK selection — never re-check a skill the user
   // deliberately deselected, and keep the composer chips in sync either way.
   assert.match(clientSrc, /selected\.size > 0\) return/,
     'seeding must skip when the user has already selected something')
-  assert.match(clientSrc, /store\.setApplied\(names\)/,
-    'seeding must keep the composer chips in sync with /applied')
+  // No session → nothing to seed, and no request that could be answered for
+  // another chat.
+  assert.match(clientSrc, /if \(ownSessionId === undefined\) return/,
+    'seeding must not run without a session of its own')
+  // The chips are only overwritten when this panel IS the composer's session, so
+  // a root-scope settings mount cannot relabel another chat's chips.
+  assert.match(clientSrc, /if \(store\.get\(\)\.sessionId === ownSessionId\) store\.setApplied\(names, ap\.modes\)/,
+    'seeding must keep the composer chips in sync, but only for its own session')
 })
 
 test('clear semantics: popover revocation syncs the panel selection one-way', () => {
@@ -265,13 +271,24 @@ test('clear semantics: popover revocation syncs the panel selection one-way', ()
   assert.match(clientSrc, /notifyRevoked\(names\)/,
     'popover revoke success must notify the panel')
   assert.match(clientSrc, /onRevoked\(\(names\) =>/, 'panel must subscribe to revocation notices')
-  // The clear callback resets the selection and revokes the applied subset.
-  const clearFn = clientSrc.match(/const clear = useCallback\(\(\) => \{[\s\S]*?\n      \}, \[selected, store, t, showToast\]\)/)
+  // The clear callback resets the selection, revokes the applied subset AND
+  // turns those skills OFF. The third step is the point: revoking alone leaves
+  // the switch on, so the model sees the skill again on the next turn — "清空"
+  // means "这批技能不要了", not "this turn only".
+  const clearFn = clientSrc.match(/const clear = useCallback\(\(\) => \{[\s\S]*?\n      \}, \[selected, revokeApplied, disableSkills, t, showToast\]\)/)
   assert.ok(clearFn, 'panel clear callback missing')
   assert.match(clearFn[0], /setSelected\(new Set\(\)\)/, 'panel clear must reset the selection')
-  assert.match(clearFn[0], /appliedSelected/, 'panel clear must revoke applied skills it clears')
-  assert.match(clearFn[0], /store\.notifyRevoked\(appliedSelected\)/,
-    'panel clear must keep the composer chips in sync')
+  assert.match(clearFn[0], /revokeApplied\(names\)/,
+    'panel clear must revoke through the shared helper')
+  assert.match(clearFn[0], /disableSkills\(names\)/,
+    'panel clear must also switch the cleared skills off')
+  // ...and that helper is what keeps the composer chips in sync.
+  const revokeFn = clientSrc.match(/const revokeApplied = useCallback\(async \(names\) => \{[\s\S]*?\n      \}, \[store\]\)/)
+  assert.ok(revokeFn, 'shared revoke helper missing')
+  assert.match(revokeFn[0], /store\.notifyRevoked\(live\)/,
+    'revocation must keep the composer chips in sync')
+  assert.match(revokeFn[0], /store\.setApplied\(/,
+    'revocation must drop the names from the applied set')
 })
 
 test('i18n: host exposes POST /i18n and the client ships the prompt protocol', () => {
@@ -329,8 +346,18 @@ test('/applied answers for the session the caller names, never a remembered one'
     'the host must not keep a cross-request "explicit session" — it leaks between windows')
   assert.ok(!/this\.explicitId/.test(source),
     'no global explicitId field may exist on the session tracker')
-  assert.match(source, /const id = explicit \|\| tracker\.current\(\)/,
-    '/applied must prefer the caller-supplied sessionId')
+  // There is no fallback at all now: an id-less request is answered as empty,
+  // because the only session the host could elect is another window's.
+  assert.ok(!/explicit \|\| tracker\.current\(\)/.test(source),
+    '/applied must not fall back to "the active session" — that is the bleed')
+  assert.match(source, /if \(!explicit\) \{[\s\S]*?noSession: true/,
+    '/applied must answer an id-less request as explicitly sessionless')
+  // A named id is canonicalised so the read hits the same registry key the
+  // writes used.
+  assert.match(source, /const asked = explicit\n/,
+    '/applied must read the caller-supplied sessionId verbatim')
+  assert.match(source, /const id = canonicalSession\(ctx, asked\)/,
+    '/applied must canonicalise the id before reading the registries')
 })
 
 test('the client always states its own session id when asking for applied skills', () => {

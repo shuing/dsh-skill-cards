@@ -10,25 +10,36 @@ import { join } from 'node:path'
 import { scanRoot, readCover, userSkillRoots, scanInstalled, defaultDshHome } from '../lib/skills-scan.js'
 import { sameOrigin } from '../lib/http.js'
 
+/** The platform's path-list separator: ';' on Windows, ':' elsewhere. */
+const delimiter = () => (process.platform === 'win32' ? ';' : ':')
+
 test('userSkillRoots covers the real-world skill locations', () => {
-  const home = '/Users/someone/.dsh'
+  // Build the expectations with the SAME path rules the scanner uses. Hardcoding
+  // '/Users/someone/...' made this test fail on Windows, where `join` produces
+  // backslashes — a platform bug in the test, not in the scanner.
+  const base = join(tmpdir(), 'sc-home')
+  const home = join(base, '.dsh')
   const roots = userSkillRoots(home, {}).map((r) => r.path)
   // ~/.agents/skills is where the agent CLI actually installs skills; an earlier
   // version only scanned ~/.dsh/skills (usually absent) and listed nothing.
-  assert.ok(roots.includes('/Users/someone/.agents/skills'), 'missing ~/.agents/skills')
-  assert.ok(roots.includes('/Users/someone/.claude/skills'), 'missing ~/.claude/skills')
-  assert.ok(roots.includes('/Users/someone/.dsh/skills'), 'missing ~/.dsh/skills')
+  assert.ok(roots.includes(join(base, '.agents', 'skills')), 'missing ~/.agents/skills')
+  assert.ok(roots.includes(join(base, '.claude', 'skills')), 'missing ~/.claude/skills')
+  assert.ok(roots.includes(join(home, 'skills')), 'missing ~/.dsh/skills')
 })
 
 test('DSH_SKILL_CARDS_ROOTS adds extra roots and never duplicates a default one', () => {
-  const home = '/Users/someone/.dsh'
-  const env = { DSH_SKILL_CARDS_ROOTS: '/opt/skills:/Users/someone/.agents/skills:/tmp/mine' }
+  const base = join(tmpdir(), 'sc-home')
+  const home = join(base, '.dsh')
+  const agentsRoot = join(base, '.agents', 'skills')
+  const custom = join(tmpdir(), 'sc-extra-skills')
+  const mine = join(tmpdir(), 'sc-mine')
+  const env = { DSH_SKILL_CARDS_ROOTS: [custom, agentsRoot, mine].join(delimiter()) }
   const roots = userSkillRoots(home, env).map((r) => r.path)
-  assert.ok(roots.includes('/opt/skills'), 'custom root missing')
-  assert.ok(roots.includes('/tmp/mine'), 'custom root missing')
+  assert.ok(roots.includes(custom), 'custom root missing')
+  assert.ok(roots.includes(mine), 'custom root missing')
   // Listing an already-known path must not produce a second entry, otherwise the
   // same skill would be counted twice in the diagnostics report.
-  assert.equal(roots.filter((p) => p === '/Users/someone/.agents/skills').length, 1,
+  assert.equal(roots.filter((p) => p === agentsRoot).length, 1,
     'a default root was duplicated by the env var')
   assert.equal(new Set(roots).size, roots.length, 'duplicate roots present')
 })
@@ -226,4 +237,37 @@ test('sameOrigin rejects cross-site requests aimed at a remote host', () => {
     sameOrigin({ headers: { host: 'example.com', origin: 'https://evil.test' } }),
     'origin does not match host',
   )
+})
+
+test('skill names may be non-ASCII (a Chinese folder is a real skill)', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'sc-cn-'))
+  try {
+    for (const [folder, name] of [['中文技能', '中文技能'], ['日本語スキル', ''], ['emoji-🎴', '']]) {
+      const d = join(dir, 'skills', folder)
+      mkdirSync(d, { recursive: true })
+      const fm = name ? `name: ${name}\n` : ''
+      writeFileSync(join(d, 'SKILL.md'), `---\n${fm}description: d\n---\nB\n`)
+    }
+    const r = await scanInstalled(dir, process.cwd())
+    const names = r.skills.map((s) => s.name)
+    // A non-English folder used to be dropped silently, so the panel looked empty
+    // with no explanation. These are valid directories and must produce cards.
+    assert.ok(names.includes('中文技能'), 'a Chinese skill folder must be discovered')
+    assert.ok(names.includes('日本語スキル'), 'a Japanese skill folder must be discovered')
+    assert.ok(names.includes('emoji-🎴'), 'an emoji skill folder must be discovered')
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('skill names still reject path separators, control and bidi characters', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'sc-bad-'))
+  try {
+    // These would break a resourceBase path or spoof a displayed name; the
+    // permissive rule must not have opened the door to them.
+    const base = join(dir, 'skills')
+    mkdirSync(base, { recursive: true })
+    writeFileSync(join(base, '..evil.md'), '---\ndescription: d\n---\nB\n')
+    const r = await scanInstalled(dir, process.cwd())
+    assert.ok(!r.skills.some((s) => s.name.startsWith('.')),
+      'a leading-dot name must stay rejected')
+  } finally { rmSync(dir, { recursive: true, force: true }) }
 })

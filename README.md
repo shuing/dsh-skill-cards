@@ -101,20 +101,77 @@ skills.register({ name, description, content, resourceBase, invocation, source }
 
 会话被关闭时，宿主会收到 `agent-removed` 事件并自动注销这些技能。
 
-#### 一次性：发送后自动移除
+#### 一次性：本轮用完才移除
 
-**「应用」始终是一次性的。** 你选中的技能只服务于**下一条要发的消息**：按下回车时它们被自动注销，标签随之消失。下一条消息不会带上这批技能。
+**「应用」始终是一次性的。** 你选中的技能只服务于**你即将发出的那一条消息**：它们被 **HOLD 住**，等这一轮对话跑完才注销，标签随之消失。下一条消息不会带上这批技能。
+
+关键是**释放的时机**——早一步晚一步都是错的：
+
+| 时机 | 后果 |
+| --- | --- |
+| 按下回车 / 点发送时 | ❌ **本轮用不上**：手势先于 agent 读取技能目录，技能被从这一轮脚下抽走 |
+| 草稿变空时 | ❌ 既迟又不可靠：宿主只在 `submit-settled` 且 `ev.ok` 后才清空编辑器，回合进行中还可能保留原文 |
+| **本轮结束（agent 回到 idle）时** | ✅ 技能已被这一轮读到，下一条消息又拿不到 |
+
+实现落在宿主端的 `agent/status` 事件上：`running` 表示有回合在跑，此时**什么都不释放**；`idle` 表示回合结束，立刻释放**恰好那批**被 hold 的技能。长时间运行的回合、被取消的回合，都以 `idle` 收尾，所以 hold 不会漏到下一条消息。
+
+客户端**不再监听任何发送手势**——它只轮询 `/applied` 来跟宿主的真实状态对齐（且只在有待释放的技能时才轮询）。
 
 这正是本插件与「会话级常驻」的区别 —— 技能是**逐条消息按需装载**的，不会在你看不见的地方长期影响后续对话。
 
 若想提前手动移除，点标签上的 × 或面板里的「全部移除」即可。
 
-> **实现说明**：DSH 未对外暴露「消息已发送」事件（其提交状态机 `begin-submit` / `send-committed` / `commit-draft` 均为 `dsh-client-ui-conversation` 的内部实现）。而宿主**只在 `submit-settled` 且 `ev.ok` 后才清空编辑器**——即应答被接受之后，且回合进行中可能保留原文——所以「草稿变空」这个信号既滞后又不可靠。
+> **实现说明**：释放时机不能靠猜。三条候选路里只有第三条成立：
 >
-> 最终采用宿主自身会响应的两个信号：**捕获阶段的 `keydown` Enter** 与**点击主按钮** —— 两者在宿主内部都归到同一个 `keyboard.submit(mode, …)` 入口。
+> - **监听发送手势**（捕获阶段 `keydown` Enter / 主按钮）—— 走不通。手势**先于** agent 读取技能目录，技能会在本轮脚下被抽走，正是「点了应用、本轮没用上」。
+> - **等草稿变空** —— 既迟又不可靠。宿主只在 `submit-settled` 且 `ev.ok` 后才清空编辑器（应答被接受之后），回合进行中还可能保留原文。
+> - **等回合结束** —— ✅ 宿主在 `agent/status` 上把回合边界讲得很清楚：`running` = 有回合在跑，`idle` = 没有。技能被 HOLD 着穿过整个 `running` 窗口，`idle` 一到立刻释放。
 >
-> - **Enter**：监听宿主输入框标记 `div[role=textbox][data-composer-input]`，过滤 `Shift+Enter` 与输入法组合中的 Enter。必须在**捕获阶段**，因为宿主的键盘映射会在 Enter 上终止事件传播，冒泡阶段的监听器永远收不到。
-> - **发送按钮**：宿主没给它 data 属性，且**发送与停止按钮共用同一个 `primary` 类**。因此以插件自己的按钮为锚点判断是否位于同一输入栏，再按 `primary` 类或发送文案匹配，并排除停止/取消类文案 —— 取消回合不算提交。
+> 长回合、被取消的回合都以 `idle` 收尾，所以 hold 不会漏到下一条消息。客户端**一个发送手势都不监听**，只轮询 `/applied` 跟宿主对齐，且只在有待释放的技能时才轮询。
+
+### 🔘 开关：关掉一个技能
+
+卡面左上角工具栏的**第一枚**是开关（开 ◉ / 关 ○），中央卡下方详情区也有一枚（关 / 开）。关掉之后：
+
+- **模型看不到它** —— 不再出现在模型的技能目录里，`skill` 工具也会拒绝加载。
+- **本会话里已引入的会被撤销** —— 先 `/revoke`，再加影子层。顺序不能反：技能一旦注册进会话，模型就一直看得见它，只加影子层并不会把它从已注入的目录里拿走。
+- **文件一个字节都不动** —— 关是**可见性选择**，不是卸载。别的 agent 照常用它，随时能开回来。
+
+工具栏右侧另有**全部关闭 / 全部开启**，作用于本机全部技能（不只是当前筛选出来的那些）。
+
+关闭的卡默认**不出现在卡组里**，筛选行会多出一枚 **「显示已关闭 N」**（只在真有技能被关时才出现），点开就能看见它们、逐张开回来。关闭的卡压暗、左下角带**「已关闭」**角标，与"根本没装"一眼可分。
+
+#### 开关是怎么生效的
+
+宿主端不动磁盘，而是给会话加一层**影子 provider**：
+
+```
+agent.ctx.get('skills').registerProvider(...)
+```
+
+它用**同名**、`modelInvocable: false`、`rank: 0` 重新登记这个技能。skill registry 合并"全局层 + 当前会话作用域链"时，**近的层直接赢同名条目**（rank 只在同一层内比大小），所以会话作用域的影子压过文件系统 provider；rank 0 再兜一层同层平局。`modelInvocable: false` 就是它从 `<available_skills>` 消失、且 `skill` 工具拒绝加载的原因。
+
+一个会话一个 provider（provider 名在同一层内必须唯一，一技能一个会撞名）。
+
+#### 开关是会话级的
+
+**关闭只影响当前会话。** 你在 A 对话关掉 `dev-expert`，B 对话的卡组里它仍然开着——这是开关与「应用」「影子」三者一致的地方：它们都按会话键控。
+
+关闭名单是**会话级且持久化**的：内存里存一份 `sessionId → Set<技能名>` 供每次读取同步回答，同时写进 `skill-cards-stats.json` 的 `_sessionDisabled`（按 `sessionId` 分组），所以**重启后开关仍然保持**。影子 provider 本身是内存级，因此重启后要按持久化的名单重建一次——这一步挂在 `agent/created` 上（`reapplyShadows`）。
+
+空集写成 `null` 而不是删键：`null` 是「此会话已决定，当前无关闭项」的哨兵。删键会让重启后的会话变成「从未写过」，于是又 seed 回旧 `_disabled`，用户刚打开的技能会自己关回去。
+
+旧版本用 `_disabled` 存一份**全机共享**的关闭名单并扇出到所有会话——那正是「A 关、B 也灰」的串味来源。升级后这份旧文件**只读一次**，作为**新会话的初始默认**：
+
+```
+新会话首次出现 → 继承旧 _disabled 作为起始关闭集 → 之后独立演进，只改自己
+```
+
+这样你以前关掉的技能不会「复活」，但从这一刻起，每个会话各关各的、互不串味。
+
+#### 关掉之后模型还记得吗
+
+影子层管的是**往后**：关掉之后模型再也拿不到这个技能的定义。但如果它此前已经被读进当前对话的上下文历史，那一轮里已读到的正文不会被抹掉——**新开一个对话即可彻底清空**。
 
 ### 🌏 技能中文化
 
@@ -244,22 +301,30 @@ cover.png   cover.jpg   cover.jpeg   cover.webp   cover.svg   preview.png   prev
 
 | 路由 | 说明 |
 | --- | --- |
-| `skills?cwd=<path>` | 已安装技能列表 + 合并后的分类表 + **扫描报告**（每个根目录的 `exists` / `found`） |
+| `skills?cwd=<path>&sessionId=<id>` | 已安装技能列表 + 合并后的分类表 + **扫描报告**；`enabled` 按 `sessionId` 计算（开关是会话级的） |
 | `cards` | 全部自定义卡面配置 |
 | `stats` | 分类 / ★ 常用 / 使用次数 + 自建分类 |
 | `prefs` | 用户 UI 偏好（当前只有 `layout`：`fan` \| `wall`），总是补齐默认值 |
+| `applied` | 该会话已引入的技能名 + 各自的 `mode` + 该会话的关闭名单；**必须带 `sessionId`**，不带则返回空集 + `noSession: true` |
 | `cover?skill=<name>` | 技能目录内的封面图（无则 404） |
 | `image?id=<hash>.<ext>` | 上传图片回读（id 需匹配 `[a-f0-9]{24}\.(png\|jpe?g\|webp\|gif\|svg)`） |
-| `active-session` | 当前活跃会话 id |
-| `applied?sessionId=<id>` | 该会话已引入的技能名列表 |
+| `active-session` | 恒为 `null`。宿主不猜会话：一个进程服务所有窗口，能"猜"到的只会是别人的会话 |
 | `vendor/three.min.js`、`vendor/card-back.jpg` | 插件自带的静态资源（白名单） |
+| `shadow-state?sessionId=<id>` | **只读诊断**：`persistedDisabled`（面板信的）/ `shadowed`（内存影子）/ `modelView`（模型真能用的）三方对比 |
+
+### 诊断脚本
+
+| 脚本 | 用途 |
+| --- | --- |
+| `node diagnose/reset-pinned-sessions.mjs` | 列出被旧 bug 钉成「无关闭项」的会话。**默认干跑**，加 `--apply` 才改写（自动备份），`--keep <id>` 保留你确认过的真实选择 |
 
 ### POST
 
 | 路由 | body | 说明 |
 | --- | --- | --- |
-| `introduce` | `{ sessionId?, names: string[] }` | 把技能注册进**会话级** skills 服务 |
-| `revoke` | `{ sessionId?, names: string[] }` | 从会话移除已引入的技能 |
+| `switch` | `{ sessionId, names: string[], enabled: boolean }` | 开 / 关技能：**只改该会话**的关闭集与影子层，不扇出；返回 `results` 与 `disabled`。缺 `sessionId` → 400 |
+| `introduce` | `{ sessionId, names: string[], mode?: "turn"\|"session" }` | 把技能注册进**会话级** skills 服务；`mode` 选「本轮（发完即释）」或「本会话（关会话才释）」；**关闭的技能也能应用**（临时抬影子）。缺 `sessionId` → 400 |
+| `revoke` | `{ sessionId, names: string[] }` | 从会话移除已引入的技能。缺 `sessionId` → 400 |
 | `cards` | `{ name, image?, title?, description?, i18n? }` | 写入卡面配置；`image: ''` 清除，`i18n: null` 清除中文层 |
 | `i18n` | `{ items: [{ name, zh, zhDesc? }] }` | 批量写入中文卡名 |
 | `stats` | `{ name, category?, starred? }` | 局部更新某技能统计 |
@@ -272,16 +337,23 @@ cover.png   cover.jpg   cover.jpeg   cover.webp   cover.svg   preview.png   prev
 ## ⚙️ 工作原理
 
 - **技能来源**：宿主端 [lib/skills-scan.js](lib/skills-scan.js) 扫描上述技能根，解析 `SKILL.md` 的 YAML frontmatter（`name` / `description`，支持行内、引号、块标量三种真实写法），并探测同目录封面图。
-- **会话级引入**：`POST /introduce` → `ctx.get('agents')?.get(sessionId)` 取出当前会话的 agent → 对其**会话作用域**的 `skills` 服务调用 `register({ name, description, content, resourceBase, invocation, source })`。纯内存注册，重启前一直有效，不写任何技能目录。
-- ** disposer 保留**：每次注册返回的 disposer 都存在 `sessionId → skillName → dispose` 的注册表里，因此技能**可以被撤销**；agent 移除时该表整块清理，避免出现「幽灵技能」。
-- **当前会话判定**：两个入口都是**会话级槽位**（`scope: "session"`），宿主把所属会话的 `sessionId` 作为标准 props 直接传入。客户端优先取它，并在每次 `/applied`、`/introduce`、`/revoke` 时**显式带上**。
-  > 宿主是**单进程、被所有窗口共享**的，所以任何「记住最近一次会话」的做法都会跨窗口串味——早期版本正是如此：A 窗口应用后，B 窗口因为没带 id 而拿到 A 的技能。会话 id 必须随每个请求传递，绝不留在宿主端的全局字段里。
+- **会话级引入**：`POST /introduce` → `ctx.get('agents')?.get(sessionId)` 取出**该**会话的 agent → 对其**会话作用域**的 `skills` 服务调用 `register({ name, description, content, resourceBase, invocation, source })`。纯内存注册，不写任何技能目录。
+- **disposer 保留**：每次注册返回的 disposer 都存在 `sessionId → skillName → dispose` 的注册表里，因此技能**可以被撤销**；agent 移除（`agent/disposed`）时该表整块清理，避免出现「幽灵技能」。
+- **两种作用域，两条命**：`turn`（本轮）进 `pending`，回合钟推进后自动释放；`session`（本会话）**只进 `introduced` 不进 `pending`**，因此回合边界碰不到它，只有 `/revoke`、关闭会话或 agent 卸载才移除。
+  > 释放要**同时**满足两条：① 会话日志的 `turnBoundary.lastTurn` 已推进（消息真的发出去了）；② **没有正在进行的回合**（`openTurnStartSeq === null`，或投影不可读时 `agent.status !== 'running'`）。
+  > 只满足 ① 就会「撤太快」：`turn/start` 在回合最开头就把计数推进了，而系统提示与技能目录要到之后才装配，那一刻释放等于把技能从模型脚下抽走。
+  > 判据读**会话日志**而非事件通知——本机实测 `agent/status` 可能不送达，靠事件会永远不释放。事件钟只作投影不可用时的兜底；两套刻度**不互相比较**，戳不可知时交给「是否在飞行中」判断。
+- **当前会话判定**：`conversation.input.right` 与 `settings.section` 都由宿主告知所属会话，客户端把它作为**显式 prop** 传给面板，并在每次 `/applied`、`/introduce`、`/switch`、`/revoke` 时带上。
+  > 宿主是**单进程、被所有窗口共享**的，所以任何「记住最近一次会话」的做法都会跨窗口串味。会话 id 必须随每个请求传递，绝不留在宿主端的全局字段里；**宿主也不猜会话**——缺 `sessionId` 的写请求返回 400，读请求返回空集并标 `noSession: true`。
+- **本轮释放的真实边界**：监听 `ctx.on('agent/status')` 的 `running → idle` 转换。**注意必须用 `ctx.on`，不能用 `agents.on`**——`AgentRegistry` 继承自 cordis 的 `Service`，本身没有 `on()` 方法，写 `agents.on(...)` 不会报错但**永远不会被调用**（早前版本正是因此让「本轮」应用撤不回来）。
+  > 释放还要求**轮次真的推进过**：`sessionClock` 统计 `running` 边沿，持有申请时记录当时的钟值。已在进行中的一轮读到的是旧目录，它的 `idle` 不会消耗这次申请；维护阶段（压缩、起标题）的空转 `idle` 同样不会。
+
 - **数据落盘**：
 
 | 文件 | 内容 |
 | --- | --- |
 | `~/.dsh/skill-cards.json` | 卡面配置（封面 URL / 标题 / 描述 / 中文层） |
-| `~/.dsh/skill-cards-stats.json` | 分类 / ★ / 使用次数 / 自建分类 / **UI 偏好 `_prefs`**（与配置分离，高频写不搅动布局） |
+| `~/.dsh/skill-cards-stats.json` | 分类 / ★ / 使用次数 / 自建分类 / **UI 偏好 `_prefs`** / **每会话关闭名单 `_sessionDisabled`** / **新会话默认关闭 `_disableByDefault`** / 遗留只读 `_disabled`（与配置分离，高频写不搅动布局） |
 | `~/.dsh/skill-cards-images/` | 上传的图片原始字节（按 sha256 前 24 位命名） |
 
 ### 客户端加载契约（给二次开发者）
@@ -361,6 +433,12 @@ PORT=43691 npm run diagnose # 启动独立自测页 http://127.0.0.1:43691/diagn
 | 切牌时卡片底部的分类标签闪动 | 已修复（1.1.0）。标签改为恒挂载、过渡期只摘掉交互能力，不再卸载重挂，`.gc-stats` 行不再重排 |
 | 卡片列表为空 | 技能没放在已识别的技能根目录（见上文表格）。面板会列出本次扫描过的目录，注意看哪个标红 |
 | 卡片没有插画 | 目录内没有 `cover.*` / `preview.*` 文件。用卡面左上角工具栏里的「自定义」按钮上传或填 URL |
+| 应用后本轮没生效 | 已修复。释放改由宿主的 `agent/status` → `idle` 驱动：技能 HOLD 着穿过整轮，回合结束才释放。早期版本在发送手势上就撤销，抢在 agent 读取技能目录之前 |
+| 应用后标签一直不消失 | 回合还没结束。标签消失 == 宿主释放了这批技能；回合进行中它们本就该在。若是回合早已结束仍不消失：确认宿主已重启（`lib/` 改动必须重启 DSH 才生效），再点标签上的 × 手动移除 |
+| 关掉的技能又出现了 | 开关是**会话级**的：关掉只影响当前会话。切换/新开会话后按新会话的关闭状态计算（新会话继承旧的 `_disabled` 一次，之后独立）。若当前会话里关了却没生效，先看 `/skills?sessionId=` 返回的 `noSession` 是否为 `true`——为 `true` 说明客户端没把会话 id 传过来，宿主会明确拒绝猜会话 |
+| 一个窗口的应用跑到另一个窗口 | 已修复。宿主不再用 `agents.list()[0]` 猜会话，缺 `sessionId` 的写请求一律 400；客户端把槽位给的会话 id 作为显式 prop 贯穿整个面板，且设置页与输入框不再互相覆盖同一个 store 字段 |
+| 关掉后模型似乎还记得 | 影子层管的是往后：关掉后模型再也拿不到它的定义，但**已读进当前对话上下文**的正文不会被抹掉。新开一个对话即可彻底清空 |
+| 想找被自己关掉的技能 | 卡组默认不显示关闭的卡。筛选行点「显示已关闭 N」，它们会带着「已关闭」角标回来，逐张开回来即可 |
 | 没有星云或切换动画 | WebGL 不可用 / three.js 加载失败会隐藏星云；「减弱动态效果」会关闭动画。扇形布局与操作仍然保留 |
 | 弹窗一闪而过 / 设置空白 | 先跑 `PORT=43691 npm run diagnose` 打开 `http://127.0.0.1:43691/diagnose/`，看诊断日志两行是否都是 ✅。❌ 则把红字与 F12 Console 报错反馈到 [Issues](https://github.com/baobao1994/dsh-skill-cards/issues) |
 | 装上后其它插件全没了 | 手改了 profile 的 `package.json`。用官方安装器重新添加，见[安装](#-安装) |

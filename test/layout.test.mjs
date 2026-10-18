@@ -405,7 +405,10 @@ test('chooseLayout 乐观更新并落盘到 /prefs，首屏用本地镜像再被
 
   assert.match(clientSrc, /const \[layout, setLayout\] = useState\(\(\) => readCachedLayout\(\)\)/,
     'layout 初值取本地镜像，避免读到权威值前先闪一下默认布局')
-  const boot = sliceBetween('let alive = true', 'return () => { alive = false }')
+  // Anchor on the PREFS effect specifically. Another effect also uses the same
+  // `let alive` / cleanup shape (the /default-off read), so the slice must start
+  // at the prefs request itself and end at THAT effect's cleanup.
+  const boot = sliceBetween('偏好读不到不该在面板上弹错误', 'return () => { alive = false }')
   assert.match(boot, /let alive = true/, '挂载时异步读偏好，卸载后不得再 setState')
   assert.match(boot, /normalizeLayout\(res\?\.prefs\?\.layout\)/, '宿主返回的值也要归一化')
   assert.match(boot, /setLayout\(served\)[\s\S]{0,80}?cacheLayout\(served\)/, '读到权威值后同步镜像')

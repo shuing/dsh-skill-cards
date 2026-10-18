@@ -14,6 +14,7 @@
 <div style="display:flex;gap:24px">
   <div style="flex:1"><b>① shell.overlay（弹窗入口）</b><div class="slot" id="overlay-slot"></div></div>
   <div style="flex:1"><b>② settings.section（设置入口）</b><div class="slot" id="settings-slot"></div></div>
+  <div style="flex:1"><b>③ conversation.input.right（输入框入口 / 本轮自检挂这里）</b><div class="slot" id="composer-slot"></div></div>
 </div>
 <p style="margin-top:16px"><b>诊断日志：</b></p>
 <pre id="log"></pre>
@@ -77,11 +78,13 @@ try {
     throw new Error('unexpected require('+name+')')
   })
   var params = new URLSearchParams(location.search)
-  var count = params.has('count') ? Math.max(0, Math.min(200, Number(params.get('count')) || 0)) : 3
+  // 默认 4 张：三张开着 + 一张默认关闭，这样一打开诊断页就能看到开关的两种状态。
+  var count = params.has('count') ? Math.max(0, Math.min(200, Number(params.get('count')) || 0)) : 4
   function makeSkills(base) {
     return Array.from({ length: count }, function(_, i) {
       var skill = base[i % base.length]
-      return Object.assign({}, skill, { name: count <= 3 ? skill.name : 'skill-' + String(i + 1).padStart(3, '0') + '-' + skill.name })
+      // 大卡组才改写名字（用于压测），小卡组保留真名，开关自检靠真名定位。
+      return Object.assign({}, skill, { name: count <= 4 ? skill.name : 'skill-' + String(i + 1).padStart(3, '0') + '-' + skill.name })
     })
   }
   var registerCalls = []
@@ -106,7 +109,30 @@ try {
     L('未找到 overlay/settings 注册（注册项：'+(registerCalls.map(function(r){return r.meta.name})).join(', ')+'）', true)
   } else {
     var store = overlay.meta.inject().store
+    // 暴露给无头自检脚本：本轮自检要观察宿主释放后芯片是否自动清空。
+    window.__scStore = store
     var applied = []
+    // 「本轮要能运用」：应用后技能被 HOLD 住，直到这一轮结束才释放。
+    // 页面用 turnRunning 模拟宿主的 agent/status：running 时不动，idle 时释放。
+    var held = []
+    // 各技能的应用方式：'turn'（本轮，发完就没）/ 'session'（本会话，关会话才没）。
+    var modes = {}
+    var turnRunning = false
+    // 「新会话默认关闭」偏好的假宿主值。
+    var defaultOffFlag = false
+    // 开关状态：与 lib/index.js 的稀疏存储一致 —— 只有被关掉的才有键。
+    var disabled = {}
+    function isOff(n){ return disabled[n] === false }
+    function disabledNames(){ return Object.keys(disabled).filter(isOff) }
+    // 示例里有一张默认关闭的卡，便于一次打开诊断页就看到关闭态。
+    disabled['sleeping-skill'] = false
+    // ?check=alloff：把全部卡都关掉，复现"所有技能关闭 → 卡组空白"的现场，
+    // 验证修复后：有明确空态 + 当前生效的卡仍可见。
+    if(params.get('check') === 'alloff'){
+      disabled['claude-md-improver'] = false
+      disabled['i18n-demo'] = false
+      disabled['theme-factory'] = false
+    }
     // UI prefs (/prefs). There is no ~/.dsh behind this page, so the fake host
     // keeps them in memory; a reload starts a fresh page context with empty
     // memory, so it re-seeds from the client's localStorage mirror. Without that
@@ -118,13 +144,66 @@ try {
     window.fetch = function(url, opts){
       function reply(data){ return Promise.resolve({ ok:true, json:function(){ return Promise.resolve(data) } }) }
       if(String(url).indexOf('/active-session')>=0) return reply({ sessionId:'diagnose' })
-      if(String(url).indexOf('/applied')>=0) return reply({ skills:applied })
+      // Mirrors lib/index.js GET /applied: reports the session's registered
+      // skills and the still-unspent hold. The hold is released by the HOST when
+      // a turn ends, so the page models that with turnRunning below.
+      if(String(url).indexOf('/applied')>=0) return reply({ skills:applied, modes:modes, pending:held, disabled:disabledNames() })
+
+      // Mirrors lib/index.js POST /switch: persist the choice, report the
+      // per-name results and how many live sessions the shadow reached. The
+      // fake host has one session, so a real answer is always "1 session".
+      // Mirrors lib/index.js /default-off: the machine-wide "new chats start
+      // off" preference. Kept in memory on the fake host.
+      if(String(url).indexOf('/default-off')>=0){
+        var dBody = {}
+        try { dBody = JSON.parse((opts && opts.body) || '{}') } catch(e) { dBody = {} }
+        if(typeof dBody.disableByDefault === 'boolean'){
+          defaultOffFlag = dBody.disableByDefault
+          L('新会话默认关闭 → ' + (defaultOffFlag ? '开' : '关'))
+        }
+        return reply({ ok:true, disableByDefault: defaultOffFlag })
+      }
+      if(String(url).indexOf('/switch')>=0){
+        var swBody = {}
+        try { swBody = JSON.parse((opts && opts.body) || '{}') } catch(e) { swBody = {} }
+        var names = Array.isArray(swBody.names) ? swBody.names : []
+        for(var i=0;i<names.length;i++){
+          disabled[names[i]] = swBody.enabled ? undefined : false
+          // Mirrors the real host: switching OFF drops the live registration,
+          // the hold and the mode label too — a shadow over a still-registered
+          // name is exactly what left the skill readable.
+          if(!swBody.enabled){
+            applied = applied.filter(function(n){ return n !== names[i] })
+            held = held.filter(function(n){ return n !== names[i] })
+            delete modes[names[i]]
+          }
+        }
+        L('开关: ' + names.join(', ') + ' → ' + (swBody.enabled ? '开' : '关'))
+        return reply({
+          ok:true, enabled:!!swBody.enabled, applied:names, skipped:[],
+          results:names.map(function(n){ return { name:n, ok:true } }),
+          sessions:1, disabled:disabledNames()
+        })
+      }
       if(String(url).indexOf('/introduce')>=0) {
-        applied = JSON.parse(opts.body).names
-        L('应用技能: ' + applied.join(', '))
+        var ib = {}
+        try { ib = JSON.parse((opts && opts.body) || '{}') } catch(e) { ib = {} }
+        applied = Array.isArray(ib.names) ? ib.names : []
+        var md = ib.mode === 'session' ? 'session' : 'turn'
+        // session 模式不进 hold —— 它要活到会话结束，不该被轮次边界释放。
+        held = (md === 'turn') ? applied.slice() : []
+        for(var mi=0;mi<applied.length;mi++) modes[applied[mi]] = md
+        L('应用技能[' + md + ']: ' + applied.join(', '))
         return reply({ results:applied.map(function(name){ return {name:name, ok:true} }) })
       }
-      if(String(url).indexOf('/revoke')>=0) { applied = []; return reply({ ok:true }) }
+      if(String(url).indexOf('/revoke')>=0) {
+        var rn = []
+        try { rn = JSON.parse(opts.body).names || [] } catch(e) { rn = [] }
+        applied = applied.filter(function(n){ return rn.indexOf(n) < 0 })
+        held = held.filter(function(n){ return rn.indexOf(n) < 0 })
+        for(var ri=0;ri<rn.length;ri++) delete modes[rn[ri]]
+        return reply({ ok:true })
+      }
 
       // Mirrors lib/index.js: GET always answers a complete set, POST merges a
       // whitelisted patch and answers the authoritative result, and an unknown
@@ -144,16 +223,33 @@ try {
         return Promise.resolve({ ok:true, json:function(){ return Promise.resolve({
           ok:true, skills:makeSkills([
             { name:'claude-md-improver', description:'改进 CLAUDE.md', source:'user-dsh', label:'Claude MD', hasCover:false, coverUrl:null,
-              custom:null, stats:{uses:1}, category:'ai', suggestedCategory:'ai' },
+              custom:null, stats:{uses:1}, category:'ai', suggestedCategory:'ai', enabled:!isOff('claude-md-improver') },
             { name:'i18n-demo', description:'demo desc', source:'user-dsh', label:'Demo', hasCover:false, coverUrl:null,
-              custom:{ image:null, title:null, description:null, i18n:{ zh:'演示卡', zhDesc:'中文描述内容' } }, stats:{uses:7}, category:'ai', suggestedCategory:'ai' },
+              custom:{ image:null, title:null, description:null, i18n:{ zh:'演示卡', zhDesc:'中文描述内容' } }, stats:{uses:7}, category:'ai', suggestedCategory:'ai', enabled:!isOff('i18n-demo') },
             { name:'theme-factory', description:'Toolkit for styling artifacts with a theme.', source:'user-dsh', label:'TF', hasCover:false, coverUrl:null,
-              custom:{ image:null, title:null, description:null, i18n:{ zh:'主题工厂', zhDesc:'为幻灯片、文档、报告、网页等作品套用主题。' } }, stats:{uses:0}, category:'design', suggestedCategory:'design' }
+              custom:{ image:null, title:null, description:null, i18n:{ zh:'主题工厂', zhDesc:'为幻灯片、文档、报告、网页等作品套用主题。' } }, stats:{uses:0}, category:'design', suggestedCategory:'design', enabled:!isOff('theme-factory') },
+            // A fourth card that starts OFF, so the diagnostic exercises the
+            // disabled path (badge, hidden-by-default, "显示已关闭" chip) without
+            // anyone having to click first.
+            { name:'sleeping-skill', description:'默认关闭的示例', source:'user-dsh', label:'Off', hasCover:false, coverUrl:null,
+              custom:null, stats:{uses:0}, category:'design', suggestedCategory:'design', enabled:!isOff('sleeping-skill') }
           ]), categories:{ ai:{label:'AI'}, design:{label:'设计'} } }) } })
       return Promise.resolve({ ok:false })
     }
     ReactDOM.render(React.createElement(overlay.component, {}), document.getElementById('overlay-slot'))
+    // 输入框入口必须真的挂上：它是 watchComposerSubmit 的宿主，本轮自检要靠它
+    // 才能观察到"宿主释放后芯片自动清空"。只改 store 是观察不到的。
+    var composer = registerCalls.find(function(r){return r.meta.name==='conversation.input.right'})
+    if(composer){
+      ReactDOM.render(React.createElement(composer.component, { store: store }), document.getElementById('composer-slot'))
+      L('输入框入口已挂载（本轮自检可观察）')
+    } else {
+      L('未找到 conversation.input.right 注册 ❌', true)
+    }
     store.open()
+    if(params.get('check') === 'turn') setTimeout(turnCheck, 1300)
+    if(params.get('check') === 'alloff') setTimeout(allOffCheck, 1300)
+    if(params.get('check') === 'clear') setTimeout(clearCheck, 1300)
     setTimeout(function(){
       var oh = document.getElementById('overlay-slot').innerHTML || ''
       // Count the current card wrapper. This used to match `.dsh-sc-name`, the
@@ -169,8 +265,211 @@ try {
       var cards = (sh.match(/dsh-sc-card-wrap/g)||[]).length
       var ok = count === 0 ? cards === 0 : cards > 0
       L('设置面板渲染卡片: '+cards+(ok?' ✅':('（数量异常，实际 '+cards+'）')), !ok)
-      L('完成。两行都是 ✅ → client.js 在真实 React 下能渲染；若你在 DSH 里仍闪退，问题在 DSH 宿主侧。')
     }, 1000)
+    // 开关自检。全部走真实 DOM 点击，读的是渲染结果而不是内部状态。
+    // ?check=turn 只跑本轮自检；?selfcheck=0 全跳过（截图脚本用）。
+    // 两段自检都会改 store，串在一起会互相干扰，所以按需二选一。
+    if(params.get('check') === 'turn' || params.get('check') === 'alloff' || params.get('check') === 'clear' || params.get('selfcheck') === '0'){ L('（跳过开关自检）') } else
+    //   默认隐藏关闭的卡 → 放出来（多一张 + 一个关闭标记）→ 在卡上关掉一张
+    //   （该卡转成关闭态，因为此时"显示已关闭"是开着的）→ 再开回来 → 收起。
+    setTimeout(function(){
+      try {
+        var panel = document.getElementById('settings-slot')
+        var q = function(sel){ return panel.querySelectorAll(sel) }
+        var cards = function(){ return q('.dsh-sc-card-wrap').length }
+        var badges = function(){ return q('.dsh-sc-offtag').length }
+        var chip = function(){
+          var all = q('.dsh-sc-catchip')
+          for(var i=0;i<all.length;i++){ if(/显示已关闭|Show off/.test(all[i].textContent||'')) return all[i] }
+          return null
+        }
+        var off = function(name){
+          var el = panel.querySelector('.dsh-sc-card[data-name="'+name+'"]')
+          return el ? el.getAttribute('data-enabled') : null
+        }
+        var NAME = 'claude-md-improver'
+        var step = function(label, cond, detail){ L(label + (cond ? ' ✅' : ' ❌ ' + (detail||'')), !cond) }
+
+        // 卡组是"本机全部技能"的视图：关闭的卡也照常显示，不再有"显示已关闭"
+        // 开关。状态只由左下角标签承载。
+        step('全部卡片都显示（含关闭的）: '+cards()+' 张 / '+badges()+' 个标记',
+          cards()===4 && badges()===1, '期望 4 张 1 标记')
+        step('没有"显示已关闭"按钮', !chip(), '不该再有这枚按钮')
+        step(NAME+' 初始为开启', off(NAME)==='true', '实际 '+off(NAME))
+
+        var sw = panel.querySelector('.dsh-sc-card[data-name="'+NAME+'"] .dsh-sc-enable')
+        if(!sw){ L('卡片上没有开关控件 ❌', true); return }
+        sw.click()
+        setTimeout(function(){
+          step('关闭后 '+NAME+' 转为关闭态', off(NAME)==='false', '实际 '+off(NAME))
+          step('关闭后卡片仍在卡组里: '+cards()+' 张', cards()===4, '实际 '+cards())
+          step('关闭后标签增至 2 个', badges()===2, '实际 '+badges())
+
+          var back = panel.querySelector('.dsh-sc-card[data-name="'+NAME+'"] .dsh-sc-enable')
+          if(!back){ L('关闭的卡上没有可再开启的开关 ❌', true); return }
+          back.click()
+          setTimeout(function(){
+            step('再开启后 '+NAME+' 回到开启态', off(NAME)==='true', '实际 '+off(NAME))
+            step('再开启后标签回到 1 个', badges()===1, '实际 '+badges())
+            step('卡片数量始终不变: '+cards()+' 张', cards()===4, '实际 '+cards())
+            L('开关自检完成。以上均为 ✅ → 开关在真实 React 下可用。')
+          }, 400)
+        }, 400)
+      } catch(err) {
+        L('开关自检异常: '+err.message, true)
+        console.error(err)
+      }
+    }, 1300)
+
+    /**
+     * 「本轮要能运用」自检。
+     *
+     * 应用 → 技能被 HOLD → 模拟一轮对话（turnRunning=true）→ 期间技能必须还在
+     * → 轮次结束（turnRunning=false）→ 宿主释放 → 芯片清空。
+     *
+     * 关键断言是第二条：**发送之后、本轮进行中，技能必须仍然可见**。旧实现
+     * 在发送手势上就撤销，正是死在这里。
+     */
+    function turnCheck(){
+      // 关键：驱动的是**假宿主**（applied / held），不是客户端 store。
+      // 客户端 store 只是宿主的镜像 —— 它由 /applied 轮询刷新。直接写 store
+      // 会被下一次轮询用宿主的真实状态覆盖回去，那样测的就不是真实链路了。
+      // 一张本轮 + 一张本会话 + 其中一张原本关闭 —— 三条路径一次覆盖。
+      var names = ['claude-md-improver','sleeping-skill']
+      var turnOnes = ['claude-md-improver']
+      var sessionOnes = ['sleeping-skill']
+      // 两边都要写，这才是真实链路：面板 POST /introduce 之后由宿主持有，
+      // 同时客户端 store.setApplied(okNames) 把结果种到芯片上。只写宿主的话，
+      // 轮询不会启动（它只在 store 非空时跑），芯片永远是空的。
+      applied = names.slice()
+      modes = { 'claude-md-improver':'turn', 'sleeping-skill':'session' }
+      held = turnOnes.slice()
+      store.setApplied(names.slice(), modes)
+      L('本轮自检: 应用 ' + names.join(', ') + '（claude=本轮，sleeping=本会话且原本关闭）')
+
+      // 等一次轮询把宿主的持有状态镜像到芯片上。
+      setTimeout(function(){
+        var onChips = store.get().applied.slice()
+        var okApplied = onChips.length === 2
+        L('应用后芯片已同步: ' + (onChips.join(', ') || '（空）') + (okApplied ? ' ✅' : ' ❌ 应用没到芯片上'), !okApplied)
+        // 生效横幅：两种范围都要出现（此时两个技能都还在）。
+        setTimeout(function(){
+          var liveTurn = document.querySelectorAll('.dsh-sc-live-turn').length
+          var liveSession = document.querySelectorAll('.dsh-sc-live-session').length
+          L('生效横幅分组: 本轮=' + (liveTurn? '有':'无') + '，本会话=' + (liveSession? '有':'无') +
+            ((liveTurn && liveSession) ? ' ✅' : ' ❌'), !(liveTurn && liveSession))
+        }, 800)
+
+        // 模拟本轮开始：宿主进入 running，此时什么都不该被释放。
+        turnRunning = true
+        setTimeout(function(){
+          var during = store.get().applied.slice()
+          var okDuring = during.length === 2
+          L('本轮进行中仍持有技能: ' + (during.join(', ') || '（空）') + (okDuring ? ' ✅' : ' ❌ 技能在本轮被提前撤销了'), !okDuring)
+
+          // 本轮结束：宿主 idle → 只释放本轮模式的；本会话模式留着。
+          turnRunning = false
+          applied = sessionOnes.slice()
+          held = []
+          setTimeout(function(){
+            var after = store.get().applied
+            var okAfter = after.length === 1 && after[0] === 'sleeping-skill'
+            L('本轮结束后仅剩本会话技能: ' + (after.join(', ') || '（空）') + (okAfter ? ' ✅' : ' ❌ 释放范围不对'), !okAfter)
+            L('本轮自检完成。')
+          }, 1200)
+        }, 900)
+      }, 900)
+    }
+
+    /**
+     * 「清空要关掉技能」自检。
+     *
+     * 用户报的问题：点「清空」后技能只是从会话摘掉，下一轮模型又能看到它们。
+     * 这里驱动真实的清空路径（勾选 → 清空），断言它把技能真正关掉：
+     *   (a) 假宿主收到 enabled:false（开关写入）
+     *   (b) 假宿主里这些技能进了 disabled（模型看不到）
+     *   (c) 已应用的注册被撤销（applied 清空）
+     */
+    function clearCheck(){
+      var names = ['claude-md-improver','i18n-demo']
+      // 先造成"已应用 + 已勾选"的状态。
+      applied = names.slice()
+      held = names.slice()
+      modes = { 'claude-md-improver':'turn', 'i18n-demo':'turn' }
+      store.setApplied(names.slice(), modes)
+      L('清空自检: 先应用 ' + names.join(', '))
+
+      setTimeout(function(){
+        var panel = document.getElementById('settings-slot')
+        // 用工具栏「全选」造成"有勾选"的状态——在扇形布局里直接点卡面是切换
+        // 浏览焦点，不等于勾选，靠它设不上 selected。
+        var btns0 = panel.querySelectorAll('.dsh-sc-toolbar button')
+        var selectAllBtn = null
+        for(var s0=0;s0<btns0.length;s0++){
+          if(/^全选$/.test((btns0[s0].textContent||'').trim())) { selectAllBtn = btns0[s0]; break }
+        }
+        if(!selectAllBtn){ L('未找到「全选」按钮 ❌', true); return }
+        selectAllBtn.click()
+        L('清空自检: 已点「全选」')
+        setTimeout(function(){
+          // 找「清空」按钮。
+          var btns = panel.querySelectorAll('.dsh-sc-toolbar button')
+          var all = []
+          for(var b=0;b<btns.length;b++) all.push((btns[b].textContent||'').trim())
+          var clearBtn = null
+          for(var b2=0;b2<btns.length;b2++){
+            if(/清空/.test((btns[b2].textContent||'').trim())) { clearBtn = btns[b2]; break }
+          }
+          L('工具栏按钮: ' + all.join(' | ') + '（找到清空: ' + (clearBtn? '是':'否') + '）')
+          if(!clearBtn){ L('未找到「清空」按钮 ❌', true); return }
+          if(clearBtn.disabled){ L('「清空」按钮是 disabled（没勾上任何卡）❌', true); return }
+          clearBtn.click()
+          setTimeout(function(){
+            var offNow = names.filter(function(n){ return disabled[n] === false })
+            L('清空后技能被关闭: ' + (offNow.join(', ') || '（无）') + (offNow.length === names.length ? ' ✅' : ' ❌ 只撤销了注册，没关掉'), offNow.length !== names.length)
+            var stillApplied = applied.length
+            L('清空后会话注册已撤销: ' + (stillApplied === 0 ? '是 ✅' : '否（剩 ' + stillApplied + '）❌'), stillApplied !== 0)
+            L('清空自检完成。')
+          }, 800)
+        }, 400)
+      }, 900)
+    }
+
+    /**
+     * 「全关」自检：所有技能都关闭时，卡组仍然显示全部卡片。
+     *
+     * 旧版本会把关闭的卡藏起来，全关后卡组一片空白、只留一个"显示已关闭"按钮；
+     * 现在不再隐藏——关闭只是状态，不是可见性。这里断言：
+     *   (a) 全关时 4 张卡全在，(b) 每张都带"已关闭"标签，(c) 没有空态提示。
+     */
+    function allOffCheck(){
+      var panel = document.getElementById('settings-slot')
+      setTimeout(function(){
+        var cards = panel.querySelectorAll('.dsh-sc-card-wrap').length
+        var badges = panel.querySelectorAll('.dsh-sc-offtag').length
+        var emptyNote = /所有技能都已关闭|All skills are off/.test(panel.textContent || '')
+        var offChip = panel.querySelectorAll('.dsh-sc-offchip').length
+
+        L('全关时仍显示全部卡片: ' + cards + ' 张' + (cards === 4 ? ' ✅' : ' ❌ 期望 4 张'), cards !== 4)
+        L('每张卡都带已关闭标签: ' + badges + ' 个' + (badges === 4 ? ' ✅' : ' ❌ 期望 4 个'), badges !== 4)
+        L('没有空态提示: ' + (emptyNote ? '有 ❌' : '无 ✅'), emptyNote)
+        L('没有"显示已关闭"按钮: ' + (offChip ? '有 ❌' : '无 ✅'), offChip > 0)
+
+        // 再验证：应用一个关闭的技能，它照常出现在卡组里并显示"本会话"。
+        var names = ['sleeping-skill']
+        applied = names.slice()
+        modes = { 'sleeping-skill':'session' }
+        held = []
+        store.setApplied(names.slice(), modes)
+        setTimeout(function(){
+          var cards2 = panel.querySelectorAll('.dsh-sc-card-wrap').length
+          var liveTag = panel.querySelectorAll('.dsh-sc-offtag.tag-live').length
+          L('生效中的卡仍在卡组里: ' + cards2 + ' 张' + (cards2 === 4 ? ' ✅' : ' ❌'), cards2 !== 4)
+          L('生效标签出现: ' + liveTag + ' 个' + (liveTag >= 1 ? ' ✅' : ' ❌'), liveTag < 1)
+          L('全关自检完成。')
+        }, 900)
+      }, 900)
+    }
   }
 } catch(err) {
   L('页面脚本异常: '+err.message, true)

@@ -295,6 +295,32 @@ window.__ModuleLoader__.load({
   color:var(--sc-ink-2); user-select:text; }
 .dsh-sc-details-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
 .dsh-sc-details-actions button[aria-pressed=true] { border-color:var(--sc-gold); color:var(--sc-gold-hi); }
+/* 开关按钮用 aria-checked（role=switch），不走上面的 aria-pressed 规则。 */
+.dsh-sc-details-actions .dsh-sc-detail-off { border-color:rgba(240,168,168,.6); color:#f0a8a8; }
+.dsh-sc-details-actions .dsh-sc-detail-on { border-color:rgba(127,224,168,.6); color:#7fe0a8; }
+/* 批量开关：与"全选/清空"区分开，视觉上偏弱，不与金色主按钮抢注意力。 */
+.dsh-sc-toolbar .dsh-sc-bulkoff { color:#f0a8a8; }
+.dsh-sc-toolbar .dsh-sc-bulkon { color:#7fe0a8; }
+/* 「新会话默认关闭」：开启时高亮，因为它是持续生效的偏好，不是一次性动作。 */
+.dsh-sc-toolbar .dsh-sc-defoff { color:var(--dsw-alias-label-secondary); font-size:11px; }
+.dsh-sc-toolbar .dsh-sc-defoff.active { color:var(--sc-gold,#c9a24b); border-color:rgba(201,162,75,.6);
+  background:rgba(201,162,75,.12); }
+/* "显示已关闭"是筛选行里的一枚常驻开关，用虚线框和分类 chip 区分开。 */
+
+
+/* ── 当前生效 ────────────────────────────────────────────────────────────
+   卡组上方的一条横幅，直接回答"现在哪些卡可用"。🔥=本轮（发完就没），
+   📌=本会话（关会话才没）。两个词用颜色区分，长名单自己换行不撑破工具栏。 */
+.dsh-sc-live { flex-basis:100%; display:flex; flex-wrap:wrap; gap:6px 14px; align-items:baseline;
+  padding:5px 11px; border-radius:7px; font-size:11.5px; line-height:1.5;
+  background:rgba(201,162,75,.10); border:1px solid rgba(201,162,75,.30); }
+.dsh-sc-live-label { color:var(--sc-gold,#c9a24b); font-weight:650; flex:none; }
+.dsh-sc-live-turn { color:#7fe0a8; }
+.dsh-sc-live-session { color:#7fd4ff; }
+
+/* 本会话应用按钮：与"本轮"主按钮同形，弱一点的颜色，避免抢主行动。 */
+.dsh-sc-toolbar .dsh-sc-apply-session { color:#7fd4ff; border-color:rgba(127,212,255,.45); }
+.dsh-sc-toolbar .dsh-sc-apply-session:hover:not(:disabled) { border-color:#7fd4ff; color:#aee4ff; }
 .dsh-sc-toolbar { flex-wrap:wrap; }
 /* 卡组区（短窗口、长描述时会滚动）会滚动，但滚动条紧贴面板右内沿，视觉上割裂
    卡面与细节区，所以隐藏轨道、保留滚动能力：滚轮 / 触控板照常，聚焦卡组区后
@@ -356,6 +382,32 @@ window.__ModuleLoader__.load({
 .dsh-sc-card:hover .dsh-sc-check { border-color:var(--sc-gold,#c9a24b); }
 .dsh-sc-card.selected .dsh-sc-check { background:linear-gradient(180deg,var(--sc-gold-hi,#f0d48a),var(--sc-gold,#c9a24b));
   border-color:var(--sc-gold,#c9a24b); color:#241b0a; }
+
+/* ── 卡片状态 ────────────────────────────────────────────────────────────
+   卡面颜色保持各分类主题原样，不因开关而压暗或换色——关掉的卡和开着的卡长得
+   一样，靠左下角那枚标签区分。卡面本来就有主题色，再叠一层状态色只会打架。
+   唯一保留的视觉差异是「生效中」的外发光：那是"现在正用着"的即时状态，值得
+   从静态外观里跳出来。 */
+.dsh-sc-card.sc-live .dsh-sc-gcard {
+  box-shadow:0 0 0 2.5px rgba(127,224,168,.95), 0 0 16px rgba(127,224,168,.55); }
+.dsh-sc-card.sc-live-session .dsh-sc-gcard {
+  box-shadow:0 0 0 2.5px var(--sc-gold,#c9a24b), 0 0 16px rgba(201,162,75,.6); }
+
+/* 左下角状态标：生效中显示「本轮 / 本会话」，关闭显示「已关闭」。
+   抬高到卡面描述之上，避免和描述文字挤在同一行。 */
+.dsh-sc-offtag { position:absolute; left:8px; bottom:14px; z-index:7; pointer-events:none;
+  padding:1px 6px; border-radius:6px; font-size:9.5px; line-height:1.5; letter-spacing:.02em;
+  background:rgba(17,20,26,.92); color:#f0a8a8; border:1px solid rgba(240,168,168,.5); }
+.dsh-sc-offtag.tag-live { color:#7fe0a8; border-color:rgba(127,224,168,.7); background:rgba(17,20,26,.88); }
+.dsh-sc-offtag.tag-live.tag-session { color:var(--sc-gold,#c9a24b); border-color:rgba(201,162,75,.75); }
+/* 待发卡：虚线边框，与「已生效」的实心标签区分开 —— 一个是"还没应用"，
+   一个是"已经在对话里"。点它可以撤掉这张卡的标签。 */
+.dsh-sc-offtag.tag-staged { pointer-events:auto; cursor:pointer; color:#b9c6dd;
+  border:1px dashed rgba(150,170,205,.75); background:rgba(17,20,26,.8); }
+.dsh-sc-offtag.tag-staged:hover { color:#e6eefc; border-color:rgba(190,210,240,.95); }
+.dsh-sc-offtag.tag-staged.tag-session { color:var(--sc-gold,#c9a24b); border-color:rgba(201,162,75,.8); }
+/* 发卡：真正提交的那一个按钮，视觉上要比两个"打标签"更重。 */
+.dsh-sc-deal { font-weight:600; }
 
 /* Card hover controls are laid out as one cluster — see .dsh-sc-cardtools in
    the game-card section below, which owns their shape, colour and reveal. */
@@ -624,6 +676,10 @@ window.__ModuleLoader__.load({
   font-size:11px; line-height:1; transition:background .12s ease, border-color .12s ease; }
 .dsh-sc-cardtools > button:hover { background:rgba(17,20,26,.88); border-color:rgba(255,255,255,.55); }
 .dsh-sc-cardtools > button:focus-visible { outline:1px solid var(--dsw-alias-border-l2); outline-offset:1px; }
+/* 开关：开=金色实心，关=灰描边。它是这张卡的总闸，配色比其余工具更重。 */
+.dsh-sc-cardtools .dsh-sc-enable { font-size:12px; color:#8f98a8; }
+.dsh-sc-cardtools .dsh-sc-enable[aria-checked="true"] { color:#7fe0a8; border-color:rgba(127,224,168,.65); }
+.dsh-sc-cardtools .dsh-sc-enable[aria-checked="false"] { color:#f0a8a8; border-color:rgba(240,168,168,.65); }
 .dsh-sc-cardtools .dsh-sc-star { font-size:13px; }
 .dsh-sc-cardtools .dsh-sc-star[aria-pressed="true"] { color:#FFD166; border-color:#FFD166; }
 .dsh-sc-cardtools .dsh-sc-trans { color:#7fd4ff; }
@@ -886,6 +942,11 @@ window.__ModuleLoader__.load({
 .dsh-sc-chip-dot { width:8px; height:8px; border-radius:50%; flex:none;
   background:var(--chip-ca,#6366F1); box-shadow:0 0 6px var(--chip-ca,#6366F1); }
 .dsh-sc-chip-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* Scope tag on an applied chip. 「本轮」self-clears after the next message;
+   「本会话」lasts until the chat closes — the two must look different. */
+.dsh-sc-chip-mode { flex:0 0 auto; font-size:10px; line-height:1.5; padding:0 5px; border-radius:6px; white-space:nowrap; }
+.dsh-sc-chip-mode.is-turn { color:#8a6d1f; background:rgba(240,190,80,.20); }
+.dsh-sc-chip-mode.is-session { color:#3f6f8f; background:rgba(90,160,210,.20); }
 .dsh-sc-chip-x { flex:none; width:16px; height:16px; display:flex; align-items:center; justify-content:center;
   border:none; border-radius:50%; cursor:pointer; font-size:11px; line-height:1; padding:0;
   color:var(--dsw-alias-label-tertiary); background:transparent; }
@@ -924,7 +985,17 @@ window.__ModuleLoader__.load({
         fanHint: '拖动卡牌左右滑动 · 点两侧空白翻一张 · 点中央卡勾选 · 侧牌居中 · 方向键可用',
         layoutGroup: '布局', layoutWall: '墙', layoutFan: '扇形',
         selectCard: '勾选技能', deselectCard: '取消勾选', favoriteCard: '设为常用', unfavoriteCard: '取消常用',
-        apply: '应用到本次会话', applying: '正在应用…',
+        apply: '应用到本轮', applying: '正在应用…',
+        applySession: '应用到本会话',
+        applyTurnHint: '只对即将发出的这一条消息生效，发完自动移除',
+        applySessionHint: '在本会话内一直生效，关闭会话才移除',
+        deal: '发卡', dealHint: '把已打标签的卡真正应用到对话（此时才播发卡动画）',
+        stagedTag: '待发', unstageHint: '点一下撤掉这张卡的待发标签',
+        liveTitle: '当前生效',
+        liveTurn: '本轮',
+        liveSession: '本会话',
+        liveNone: '（无）',
+        toastAppliedTurn: '已应用到本轮',
         setImage: '自定义', imgTitle: '标题', imgDesc: '描述', imageUrl: '图片 URL（可选）',
         imageHint: '本地选图或粘贴 http(s) 图片链接。留空则用自动配色。',
         chooseFile: '选择本地图片', removeFile: '移除所选图片',
@@ -939,11 +1010,26 @@ window.__ModuleLoader__.load({
         manageCats: '分类管理', addCat: '新增分类', catPlaceholder: '分类名称', builtinCatNote: '智能分类由系统生成，不可编辑',
         renameCat: '重命名', deleteCat: '删除', saveCat: '保存', catNameLabel: '名称', builtinLabel: '内置',
         appliedTo: '已应用到本次会话：',
+        scopeTurn: '本轮', scopeSession: '本会话',
         revoke: '移除该技能', revokeFail: '移除失败：', appliedNone: '本会话未应用技能',
         revokeAll: '全部移除',
+        revokeAndOff: '移除并关闭', revokeOffHint: '把这些技能从本会话摘掉，并关掉它们（模型看不到，可随时开回来）',
         // original text of the skill (the card face may be translated/clamped)
         origTitle: '原始信息', origName: '原始技能名', origDesc: '原始描述',
         origNoDesc: '（这个技能没有写描述）', origFrom: '来源：',
+        // 开关 — 关闭就是模型看不到这个技能（不删文件，可随时开回来）
+        switchOn: '开启', switchOff: '关闭', switchLabel: '启用 {name}',
+        offBadge: '已关闭',
+        offHint: '已关闭的技能不会出现在模型的技能目录里，也不会被引入本会话。技能文件仍在原处，随时可以开回来。',
+        disableAll: '全部关闭', enableAll: '全部开启',
+        defaultOff: '新会话默认关闭',
+        defaultOffOn: '新会话默认关闭：开',
+        defaultOffOff: '新会话默认关闭：关',
+        defaultOffHint: '开启后，新开的对话里所有技能默认是关闭的。已有对话不受影响。',
+        defaultOffSaved: '已保存「新会话默认关闭」',
+        toastEnabled: '已开启', toastDisabled: '已关闭',
+        switchFail: '开关失败：', switchPartial: '部分技能未能关闭',
+        switchStored: '已记录，下一个会话生效（当前没有活跃会话）',
       },
       en: {
         nav: 'Skills', title: 'Skill Cards', search: 'Search skill name or description…',
@@ -960,7 +1046,17 @@ window.__ModuleLoader__.load({
         fanHint: 'Drag the cards or click the sides to browse · Click the center to select · Arrow keys work',
         layoutGroup: 'Layout', layoutWall: 'Wall', layoutFan: 'Fan',
         selectCard: 'Select skill', deselectCard: 'Deselect skill', favoriteCard: 'Favorite', unfavoriteCard: 'Unfavorite',
-        apply: 'Apply to this session', applying: 'Applying…',
+        apply: 'Apply for this turn', applying: 'Applying…',
+        applySession: 'Apply for this session',
+        applyTurnHint: 'Applies to the message you are about to send, then is removed',
+        applySessionHint: 'Stays for this whole session; removed when the chat closes',
+        deal: 'Deal', dealHint: 'Apply the tagged cards for real (the reveal plays now)',
+        stagedTag: 'queued', unstageHint: 'Click to remove the queued tag from this card',
+        liveTitle: 'Live now',
+        liveTurn: 'turn',
+        liveSession: 'session',
+        liveNone: '(none)',
+        toastAppliedTurn: 'Applied for this turn',
         setImage: 'Customize', imgTitle: 'Title', imgDesc: 'Description', imageUrl: 'Image URL (optional)',
         imageHint: 'Pick a local file or paste an http(s) image link. Leave empty for the generated colours.',
         chooseFile: 'Choose local image', removeFile: 'Remove selected image',
@@ -975,11 +1071,27 @@ window.__ModuleLoader__.load({
         manageCats: 'Manage categories', addCat: 'Add category', catPlaceholder: 'Category name', builtinCatNote: 'Smart categories are system-generated and not editable',
         renameCat: 'Rename', deleteCat: 'Delete', saveCat: 'Save', catNameLabel: 'Name', builtinLabel: 'Built-in',
         appliedTo: 'Applied to this session:',
+        scopeTurn: 'this turn', scopeSession: 'this session',
         revoke: 'Remove this skill', revokeFail: 'Failed to remove: ', appliedNone: 'No skills applied yet',
         revokeAll: 'Remove all',
+        revokeAndOff: 'Remove & turn off', revokeOffHint: 'Remove these skills from this session and turn them off (the model cannot see them; turn back on any time)',
         // original text of the skill (the card face may be translated/clamped)
         origTitle: 'Original skill', origName: 'Original name', origDesc: 'Original description',
         origNoDesc: '(this skill ships no description)', origFrom: 'Source: ',
+        // 开关 — off means the model cannot see this skill (files stay on disk).
+        // NOTE 注释里不要出现 "word:"，locale 测试会把注释当成声明过的 key。
+        switchOn: 'On', switchOff: 'Off', switchLabel: 'Enable {name}',
+        offBadge: 'Off',
+        offHint: 'A skill that is off is absent from the model catalog and is never applied to this session. Its files stay on disk and it can be turned back on at any time.',
+        disableAll: 'All off', enableAll: 'All on',
+        defaultOff: 'New chats start off',
+        defaultOffOn: 'New chats start off: on',
+        defaultOffOff: 'New chats start off: off',
+        defaultOffHint: 'When on, every skill starts disabled in a NEW chat. Existing chats are unaffected.',
+        defaultOffSaved: 'Saved "new chats start off"',
+        toastEnabled: 'Enabled', toastDisabled: 'Disabled',
+        switchFail: 'Switch failed: ', switchPartial: 'Some skills could not be switched off',
+        switchStored: 'Saved — takes effect in the next session (none is active now)',
       },
     }
 
@@ -987,7 +1099,7 @@ window.__ModuleLoader__.load({
      * Shared store (open/close + current session id seeding)
      * ------------------------------------------------------------------ */
     function createStore() {
-      let state = { open: false, sessionId: undefined, gacha: null, lastApplied: null, applied: [] }
+      let state = { open: false, sessionId: undefined, gacha: null, lastApplied: null, applied: [], appliedModes: {} }
       const listeners = new Set()
       const emit = () => { for (const l of listeners) l() }
       // Revocation notice (one-shot per event): skills removed from the session
@@ -995,23 +1107,57 @@ window.__ModuleLoader__.load({
       // names from its selection — the two views must not disagree about what
       // the session holds. The composer popover is the ONLY writer.
       let revokedSeq = 0
+      // Bumped by every applied-set write; see `appliedRev` above.
+      let appliedRev = 0
       const revokedListeners = new Set()
       return {
         get: () => state,
         subscribe: (l) => { listeners.add(l); return () => listeners.delete(l) },
         open() { state = { ...state, open: true }; emit() },
         close: () => { state = { ...state, open: false }; emit() },
-        setSession: (id) => { if (id && state.sessionId !== id) { state = { ...state, sessionId: id }; emit() } },
+        /**
+         * Adopt the session this mount belongs to.
+         *
+         * A DEFINITE change to `undefined` is honoured, not ignored: switching to
+         * a blank/new chat legitimately has no session id yet, and the previous
+         * `if (id && …)` kept the OLD id — so the panel then loaded, applied to,
+         * and rendered the enabled flags of the chat the user had just left.
+         * That is the "各会话单独还是会窜" report.
+         */
+        setSession: (id) => {
+          const next = typeof id === 'string' && id !== '' ? id : undefined
+          if (next === state.sessionId) return
+          state = { ...state, sessionId: next }
+          emit()
+        },
         // Most-recently-applied skills, shown as confirmation chips in the
         // composer area ("已应用：skill-a · skill-b") until they fade.
         setLastApplied: (names) => { state = { ...state, lastApplied: names }; emit() },
         // Skills currently applied to the active session (revocable chips).
-        setApplied: (names) => {
+        // `modes` records HOW each one was applied ('turn' | 'session'); the
+        // cards use it to show which kind of availability it has right now.
+        setApplied: (names, modes) => {
           const next = Array.isArray(names) ? names : []
+          const nextModes = (modes && typeof modes === 'object') ? modes : (state.appliedModes || {})
           // identity-stable update: skip the emit when nothing actually changed
-          if (next.length === state.applied.length && next.every((n, i) => n === state.applied[i])) return
-          state = { ...state, applied: next }; emit()
+          if (next.length === state.applied.length && next.every((n, i) => n === state.applied[i])
+            && JSON.stringify(nextModes) === JSON.stringify(state.appliedModes)) return
+          state = { ...state, applied: next, appliedModes: nextModes }
+          appliedRev += 1
+          emit()
         },
+        /**
+         * Monotonic revision of the applied set.
+         *
+         * The composer's /applied poll is asynchronous, so a response can be
+         * OLDER than a local change made while it was in flight. Concretely: a
+         * poll starts, the user applies a skill, the poll answers with the
+         * pre-apply set, and the difference reads as "the turn spent those
+         * skills" — a false revocation of a brand-new apply. Comparing this
+         * revision before and after the round-trip discards exactly those
+         * responses.
+         */
+        appliedRev: () => appliedRev,
         // Fired by the composer chips after a successful POST /revoke so the
         // panel can un-check the revoked skills in its selection.
         onRevoked: (l) => { revokedListeners.add(l); return () => revokedListeners.delete(l) },
@@ -1080,6 +1226,27 @@ window.__ModuleLoader__.load({
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
       return data
+    }
+
+    /**
+     * Turn a batch of skills off in one session.
+     *
+     * Module-level (not a panel closure) because TWO independent surfaces need
+     * it: the panel's 清空 button and the composer chips' 全部移除. Both mean
+     * "these skills should stop affecting me", and revoking the session
+     * registration alone does not achieve that — the switch stays on and the
+     * model sees them again on the next turn.
+     *
+     * @returns the names the host accepted, so callers can report honestly.
+     */
+    async function switchOff(sessionId, names) {
+      const list = (names || []).filter((n) => typeof n === 'string' && n)
+      if (list.length === 0) return []
+      const res = await api('/switch', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ sessionId, names: list, enabled: false }),
+      })
+      return (res.results || []).filter((r) => r.ok).map((r) => r.name)
     }
 
     /* ------------------------------------------------------------------ *
@@ -2039,10 +2206,12 @@ ${draft}`
        them changed. Memo only pays off because every prop below is referentially
        stable — the handlers are useCallback'd and `skill` is a memoised object,
        so an unchanged card really does bail out. */
-    const Card = React.memo(function Card({ skill, custom, selected, interactive = true, isCurrent = true, onToggle, onSetImage, onTranslate, onResetI18n, onArtPrompt, t, catDefs, onStar, onCategory }) {
+    const Card = React.memo(function Card({ skill, custom, selected, interactive = true, isCurrent = true, onToggle, onSetImage, onTranslate, onResetI18n, onArtPrompt, t, catDefs, onStar, onCategory, onEnabled, applied, liveModes, stagedMode, onUnstage }) {
       const effectiveTitle = custom?.i18n?.zh || custom?.title || skill.name
       const effectiveDesc = custom?.i18n?.zhDesc || custom?.description || skill.description || ''
       const [imgError, setImgError] = useState(false)
+      // 开关状态：undefined 视为开启（旧宿主不返回该字段时，卡片行为与从前一致）。
+      const enabled = skill.enabled !== false
       // ONE card popover at a time: the category picker ('cat') and the
       // original-text panel ('info'). It carries the measured placement, so
       // opening is a single state write — the layout read happens in the click
@@ -2130,8 +2299,12 @@ ${draft}`
         // nesting under role="button" would have hidden the tools from
         // assistive tech (a button's children are presentational).
         e('div', {
-          className: `dsh-sc-card ${tint}${selected ? ' selected' : ''}${custom?.i18n?.zh ? ' i18n-done' : ''}`,
+          // 卡片自带颜色：开启=正常卡面（绿系描边），关闭=压暗（红系描边）。
+          // 生效中的卡另加 sc-live / sc-live-session，让"本轮/本会话"一眼可辨——
+          // 这是取代右上角那枚小徽标的做法：状态直接长在卡上。
+          className: `dsh-sc-card ${tint}${selected ? ' selected' : ''}${custom?.i18n?.zh ? ' i18n-done' : ''}${enabled ? ' sc-on' : ' sc-off'}${applied ? ' sc-live' : ''}${applied && liveModes[skill.name] === 'session' ? ' sc-live-session' : ''}`,
           'data-name': skill.name,
+          'data-enabled': enabled ? 'true' : 'false',
           style: { padding: 0, border: 'none', background: 'transparent', overflow: 'visible' },
         },
           // A real <button> around the face: native Enter/Space, native focus
@@ -2173,10 +2346,39 @@ ${draft}`
                 }))),
           ),
           e('div', { className: 'dsh-sc-check', 'aria-hidden': 'true' }, selected ? '✓' : ''),
+          // 左下角状态标，三种状态：
+          //   已生效  → 「本轮 / 本会话」（实心，等发卡后才会出现）
+          //   待发卡  → 「待发 · 本轮 / 待发 · 本会话」（虚线边，点 × 可撤标签）
+          //   已关闭  → 「已关闭」
+          // 原来的右上角徽标撤掉了——同一份信息，长在卡上比挂在角上更直接。
+          applied
+            ? e('div', {
+                className: `dsh-sc-offtag tag-live${liveModes[skill.name] === 'session' ? ' tag-session' : ''}`,
+                'aria-hidden': 'true',
+              }, liveModes[skill.name] === 'session' ? t('liveSession') : t('liveTurn'))
+            : stagedMode
+              ? e('button', {
+                  type: 'button',
+                  className: `dsh-sc-offtag tag-staged${stagedMode === 'session' ? ' tag-session' : ''}`,
+                  title: t('unstageHint'),
+                  onClick: (ev) => { ev.stopPropagation(); onUnstage && onUnstage(skill.name) },
+                }, `${t('stagedTag')}·${stagedMode === 'session' ? t('liveSession') : t('liveTurn')} ×`)
+              : (enabled ? null : e('div', { className: 'dsh-sc-offtag', 'aria-hidden': 'true' }, t('offBadge'))),
           // Every hover control, in one wrapping row in the top-LEFT corner —
           // see .dsh-sc-cardtools. Order reads state → the card's text tools
           // (中文化 / 还原 / 原文) → its artwork tools (卡图 / 封面).
           e('div', { className: 'dsh-sc-cardtools' },
+            // 开关排在最前：它是这张卡是否参与对话的总闸，其余工具都只是外观与文案。
+            // 用 role=switch（不是 aria-pressed），与仓库里其它开关一致。
+            e('button', {
+              type: 'button',
+              className: 'dsh-sc-enable',
+              role: 'switch',
+              'aria-checked': enabled ? 'true' : 'false',
+              'aria-label': t('switchLabel', { name: effectiveTitle }),
+              title: enabled ? t('switchOff') : t('switchOn'),
+              onClick: (ev) => { ev.stopPropagation(); onEnabled && onEnabled(skill.name, !enabled) },
+            }, enabled ? '◉' : '○'),
             e('button', {
               type: 'button',
               className: 'dsh-sc-star',
@@ -2296,6 +2498,14 @@ ${draft}`
        宿主端 `/prefs` 是权威值（跟分类/封面一样落在 ~/.dsh 里，换入口、换窗口、
        重启都跟着走）；localStorage 只是首屏镜像，避免读到权威值前先闪一下默认
        布局。默认值必须与 lib/stats.js 的 PREF_DEFAULTS.layout 一致（有单测守着）。 */
+    /**
+     * How often the composer re-reads /applied while an apply is outstanding.
+     *
+     * Only the UI's freshness depends on this; the release itself is the host's
+     * `agent/status` → 'idle' handler. 700ms keeps the chips feeling immediate
+     * after a turn ends without polling an idle composer at all.
+     */
+    const APPLIED_POLL_MS = 700
     const DEFAULT_LAYOUT = 'fan'
     const LAYOUTS = ['fan', 'wall']
     const LAYOUT_STORAGE_KEY = 'dsh-skill-cards.layout'
@@ -2358,6 +2568,14 @@ ${draft}`
         skills.map((skill) => e(Card, {
           ...cardProps, key: skill.name, skill, custom: skill.custom,
           selected: selected.has(skill.name), t,
+          applied: (cardProps.appliedNames || []).includes(skill.name),
+          // Only a card that is NOT already live can carry a staged tag: once it
+          // is applied the live tag takes over, and two tags on one card is a lie
+          // about what pressing 发卡 would do.
+          stagedMode: (cardProps.appliedNames || []).includes(skill.name)
+            ? undefined
+            : (cardProps.stagedModes || {})[skill.name],
+          onUnstage: cardProps.onUnstage,
         })))
     }
 
@@ -2523,7 +2741,12 @@ ${draft}`
             style: { width: metrics.cardWidth, height: metrics.cardHeight, marginLeft: -metrics.cardWidth / 2,
               ...fanPose(offset, metrics), pointerEvents: visible ? 'auto' : 'none' },
           }, e(Card, { ...cardProps, skill, custom: skill.custom, selected: selected.has(skill.name), t,
-            isCurrent: active, interactive: active && !busy, onToggle: browse }))
+            isCurrent: active, interactive: active && !busy, onToggle: browse,
+            applied: (cardProps.appliedNames || []).includes(skill.name),
+            stagedMode: (cardProps.appliedNames || []).includes(skill.name)
+              ? undefined
+              : (cardProps.stagedModes || {})[skill.name],
+            onUnstage: cardProps.onUnstage }))
         })),
         e('div', { className: 'dsh-sc-fan-nav' },
           e('button', { type: 'button', onClick: () => move(-1), disabled: activeIndex === 0, 'aria-label': t('previousCard') }, '←'),
@@ -2538,13 +2761,22 @@ ${draft}`
               onClick: () => cardProps.onToggle(current.name) }, selected.has(current.name) ? t('deselectCard') : t('selectCard')),
             e('button', { type: 'button', 'aria-pressed': !!current.starred,
               onClick: () => cardProps.onStar(current.name) }, current.starred ? t('unfavoriteCard') : t('favoriteCard')),
+            // 详情区也放一枚开关：卡面工具栏只在悬停时出现，而扇形里"当前这张卡
+            // 是否参与对话"是这个面板最需要一眼看清、一手能改的状态。
+            e('button', {
+              type: 'button', role: 'switch',
+              'aria-checked': current.enabled ? 'true' : 'false',
+              className: current.enabled ? 'dsh-sc-detail-on' : 'dsh-sc-detail-off',
+              title: t('offHint'),
+              onClick: () => cardProps.onEnabled(current.name, !current.enabled),
+            }, current.enabled ? t('switchOff') : t('switchOn')),
             e('button', { type: 'button', onClick: () => cardProps.onSetImage(current) }, t('setImage')))))
     }
 
     /* ------------------------------------------------------------------ *
      * Category filter row (chips + sort toggle)
      * ------------------------------------------------------------------ */
-    function CatFilterRow({ catDefs, catFilter, setCatFilter, sortBy, setSortBy, counts, t, onManage }) {
+    function CatFilterRow({ catDefs, catFilter, setCatFilter, sortBy, setSortBy, counts, t }) {
       const chips = [
         { id: 'all', label: t('filterAll') },
         { id: 'starred', label: t('filterStarred') },
@@ -2992,7 +3224,23 @@ ${draft}`
     /* ------------------------------------------------------------------ *
      * Skills panel (shared by the settings section and the modal)
      * ------------------------------------------------------------------ */
-    function SkillsPanel({ store, t, onApplyDone, onRequestClose }) {
+    /**
+     * The skills panel.
+     *
+     * `sessionId` is an EXPLICIT prop, not read from the store. The panel is
+     * mounted from two slots with different scopes — `settings.section` (root
+     * scope, no session) and the composer's modal (session scope) — and the two
+     * used to share one mutable `store.sessionId`. Whichever mounted last won, so
+     * the settings panel could show chat A's switches while the composer showed
+     * chat B's, and a root-scope mount wiped the id entirely. An explicit prop
+     * makes each mount answer for exactly the session it belongs to.
+     */
+    function SkillsPanel({ store, t, sessionId, onApplyDone, onRequestClose }) {
+      // The session every request in this panel names. `undefined` means this
+      // mount has no session (a settings panel opened with no chat selected):
+      // the panel still browses, but apply/switch are disabled rather than
+      // silently landing on some other chat.
+      const ownSessionId = typeof sessionId === 'string' && sessionId !== '' ? sessionId : undefined
       const [skills, setSkills] = useState(null)
       // Which directories the host actually scanned, and how many skills each
       // yielded. Shown only in the empty state, where the difference between
@@ -3019,6 +3267,25 @@ ${draft}`
         return () => clearTimeout(queryTimer.current)
       }, [query])
       const [selected, setSelected] = useState(() => new Set())
+      /**
+       * Staged skills: picked and TAGGED, but not yet applied.
+       *
+       * The flow the user asked for is two-step:
+       *
+       *   1. tick cards → press 「本轮」/「本会话」 → each ticked card gets that
+       *      tag, and the ticks are cleared (the selection is consumed by it);
+       *   2. press 「发卡」 → everything staged is actually introduced, and only
+       *      THEN does the gacha reveal play.
+       *
+       * Why separate: pressing the scope button used to fire the reveal
+       * immediately, so a user who wanted one lot of turn-scoped and another of
+       * session-scoped cards got a show per press and could not see what was
+       * queued. Staging makes the set visible (the tag is on the card) and gives
+       * one deliberate commit with one show.
+       *
+       * Map<skillName, 'turn' | 'session'>.
+       */
+      const [staged, setStaged] = useState(new Map())
       const [editing, setEditing] = useState(null)
       const [busy, setBusy] = useState(false)
       const [error, setError] = useState('')
@@ -3041,6 +3308,15 @@ ${draft}`
       // yet persisted — /stats POST is the persist; the host /skills read is the
       // source of truth for what survives a refresh).
       const [statsOverrides, setStatsOverrides] = useState({})
+      // 开关的本地覆盖：键存在即表示这一次会话里改过。宿主 /skills 仍带 enabled，
+      // 但点开关后不回拉整份列表，所以本地覆盖先顶着，下次 load 再对齐。
+      const [enableOverrides, setEnableOverrides] = useState({})
+      // 关闭的技能默认不出现在卡组里 —— 否则被自己关掉的卡会一直占着位置。
+      // 这只是显示过滤：它们仍在「显示已关闭」里可勾选、可开回来。
+
+      // 「新会话默认关闭」——一个机器级偏好，决定新对话出生时的开关状态。
+      // null = 还没从宿主读到，避免首屏闪一下错误的值。
+      const [defaultOff, setDefaultOff] = useState(null)
       const toastTimer = useRef(null)
       const gridRef = useRef(null)
       const canvasRef = useRef(null)
@@ -3057,6 +3333,29 @@ ${draft}`
         if (toastTimer.current) clearTimeout(toastTimer.current)
         toastTimer.current = setTimeout(() => setToast(''), 2600)
       }, [])
+
+      // 「新会话默认关闭」的宿主权威值。null = 还没读到，按钮先不显示开关态。
+      useEffect(() => {
+        let alive = true
+        api('/default-off')
+          .then((res) => { if (alive) setDefaultOff(!!res.disableByDefault) })
+          .catch(() => { /* 读不到就维持未知 */ })
+        return () => { alive = false }
+      }, [])
+      const toggleDefaultOff = useCallback(async () => {
+        const next = !defaultOff
+        setDefaultOff(next)
+        try {
+          await api('/default-off', {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ disableByDefault: next }),
+          })
+          showToast(t('defaultOffSaved'))
+        } catch (err) {
+          setDefaultOff(!next)
+          showToast(`${t('switchFail')}${err.message}`)
+        }
+      }, [defaultOff, t, showToast])
 
       // 读宿主权威偏好（与分类/封面同一份存储，换入口、换窗口、重启都跟着走）。
       // 读失败就保留镜像/默认值 —— 偏好读不到不该在面板上弹错误。
@@ -3140,8 +3439,12 @@ ${draft}`
         setError('')
         try {
           // /skills already carries each skill's `custom` (from skill-cards.json
-          // on the host), so a separate /cards call is redundant.
-          const sk = await api('/skills')
+          // on the host), so a separate /cards call is redundant. The switch is
+          // session-scoped, so the sessionId MUST ride along — otherwise every
+          // window would show the same (machine-wide) enabled flags and the cards
+          // would bleed across chats, which is exactly what we are removing.
+          const q = ownSessionId ? `?sessionId=${encodeURIComponent(ownSessionId)}` : ''
+          const sk = await api(`/skills${q}`)
           setSkills(sk.skills || [])
           setRoots(Array.isArray(sk.roots) ? sk.roots : [])
           if (sk.categories && typeof sk.categories === 'object') setCatDefs(sk.categories)
@@ -3150,14 +3453,38 @@ ${draft}`
           // before this refresh) keeps shadowing the fresh i18n data forever —
           // the "writes only appear after closing the app" bug.
           setCardOverrides({})
+          // The switch overrides are SESSION-SCOPED, so they must be dropped on
+          // every load. Keeping them was a real cross-session bleed: a skill
+          // greyed out in chat A stayed grey in chat B, because the stale local
+          // override shadowed the freshly-fetched per-session `enabled`.
+          setEnableOverrides({})
+          // NOTE: `statsOverrides` (category / star edits) is deliberately NOT
+          // cleared — it is user-level data that is still pending its /stats
+          // write, and dropping it on every load would discard an edit the user
+          // just made.
         } catch (err) {
           console.error('[skill-cards] load failed:', err)
           setError(err.message || String(err))
           setSkills([])
         }
-      }, [])
+      }, [ownSessionId])
 
-      useEffect(() => { load() }, [load])
+      // 会话切换时重新加载：开关是会话级的，切到另一个会话要重新拉它的 enabled。
+      // `ownSessionId` 变化 → 这个 effect 重跑 → load。
+      //
+      // 同时清空勾选与卡片覆盖：它们描述的是**上一个会话**的状态，带进新会话
+      // 就是跨会话串味（把 A 会话选中的技能、"应用到本轮"的标记带进 B 会话）。
+      const liveSessionId = ownSessionId
+      const prevSessionRef = useRef(liveSessionId)
+      useEffect(() => {
+        if (prevSessionRef.current !== liveSessionId) {
+          prevSessionRef.current = liveSessionId
+          setSelected(new Set())
+          setCardOverrides({})
+          setEnableOverrides({})
+        }
+        load()
+      }, [load, liveSessionId])
 
       // Seed the selection with the skills already applied to the active
       // session (GET /applied), so re-opening the panel shows them pre-checked
@@ -3168,19 +3495,24 @@ ${draft}`
       // user deliberately deselected, we only seed a blank slate).
       useEffect(() => {
         if (skills === null || selected.size > 0) return
+        // No session → nothing can be applied to it, so there is nothing to seed.
+        if (ownSessionId === undefined) return
         let disposed = false
         ;(async () => {
           try {
-            const ap = await api('/applied')
+            const q = `?sessionId=${encodeURIComponent(ownSessionId)}`
+            const ap = await api(`/applied${q}`)
             if (disposed) return
             const names = ap.skills || []
-            // Keep the composer chips in sync with the same answer.
-            store.setApplied(names)
+            // Keep the composer chips in sync with the same answer — but ONLY
+            // when this panel is the composer's own session. A root-scope
+            // settings mount must never overwrite the composer's chips.
+            if (store.get().sessionId === ownSessionId) store.setApplied(names, ap.modes)
             if (names.length > 0) setSelected(new Set(names))
           } catch { /* no session / revoked elsewhere — nothing to seed */ }
         })()
         return () => { disposed = true }
-      }, [skills, selected.size, store])
+      }, [skills, selected.size, store, ownSessionId])
 
       const merged = useMemo(() => (skills || []).map((s) => {
         const so = statsOverrides[s.name]
@@ -3198,11 +3530,23 @@ ${draft}`
           category,
           starred: !!stats.starred,
           uses: typeof stats.uses === 'number' ? stats.uses : 0,
+          // undefined（旧宿主不返回该字段）按开启处理，卡片行为与从前一致。
+          enabled: typeof enableOverrides[s.name] === 'boolean' ? enableOverrides[s.name] : s.enabled !== false,
         }
-      }), [skills, cardOverrides, statsOverrides])
+      }), [skills, cardOverrides, statsOverrides, enableOverrides])
 
       // Apply category filter + search + sort (starred first in default order;
       // when filtering "starred" only starred cards remain).
+      // 本会话内已生效的技能，以及各自是「本轮」还是「本会话」。
+      // 来自 /applied 的 modes，宿主是唯一权威；这里只做镜像展示。
+      // 放在 filtered 之前：关闭的过滤要放行「当前生效」的技能。
+      const appliedState = useSyncExternalStore(store.subscribe, store.get, store.get) || {}
+      const liveModes = appliedState.appliedModes || {}
+      const appliedNames = new Set(appliedState.applied || [])
+      // Staged tags as a plain object for the card renderers (they are memoized
+      // and an object is a cheaper dependency than a fresh Map identity).
+      const stagedModes = useMemo(() => Object.fromEntries(staged), [staged])
+
       const filtered = useMemo(() => {
         const q = debouncedQuery.trim().toLowerCase()
         let list = merged
@@ -3218,22 +3562,33 @@ ${draft}`
             zh.toLowerCase().includes(q) ||
             zhDesc.toLowerCase().includes(q)
         })
+        // 关闭的技能也照常显示：卡组是"本机全部技能"的视图，不是"可用技能"的
+        // 视图。关掉的卡靠左下角标签和压暗来区分，而不是藏起来——藏起来会让
+        // 用户把技能全关掉后面对一片空白，连自己关了什么、怎么开回来都看不到。
         const sorted = [...list]
         if (sortBy === 'uses') sorted.sort((a, b) => b.uses - a.uses || a.name.localeCompare(b.name))
         else if (sortBy === 'starred') sorted.sort((a, b) => a.name.localeCompare(b.name))
         else sorted.sort((a, b) => (b.starred ? 1 : 0) - (a.starred ? 1 : 0) || a.name.localeCompare(b.name))
         return sorted
-      }, [merged, debouncedQuery, catFilter, sortBy])
+      }, [merged, debouncedQuery, catFilter, sortBy, appliedState])
 
       // Per category-count for the filter chips (so "文档 (12)" reads instantly).
       const catCounts = useMemo(() => {
-        const counts = { all: merged.length, starred: 0 }
+        // "已关闭"仍单独计一份：它给工具栏的批量按钮做禁用判断（全都关了就不必
+        // 再点"全部关闭"），但不再影响任何卡片的显示。
+        const counts = { all: merged.length, starred: 0, off: 0 }
         for (const s of merged) {
+          if (!s.enabled) counts.off++
           if (s.starred) counts.starred++
           counts[s.category] = (counts[s.category] || 0) + 1
         }
         return counts
       }, [merged])
+
+      // appliedNow 供工具栏横幅与卡面角标用；与上方的 appliedNames 同源。
+      const appliedNow = useMemo(
+        () => merged.filter((s) => appliedNames.has(s.name)),
+        [merged, appliedNames])
 
       // 扇形姿态只由当前浏览索引计算，避免随机 3D 倾斜与切换动画争用 transform。
       // The WebGL particle nebula is the only part that needs three.js. It is
@@ -3277,21 +3632,86 @@ ${draft}`
       // "清空" clears the selection AND revokes every selected skill that is
       // already applied to the session — opening the panel seeds the selection
       // with applied skills, so clearing must undo those too, not just untick.
-      const clear = useCallback(() => {
-        const appliedSelected = [...selected].filter((n) => store.get().applied.includes(n))
-        setSelected(new Set())
-        if (appliedSelected.length > 0) {
-          api('/revoke', {
+      /**
+       * 把给定名字从"本会话已应用"里摘掉（只发本会话真正应用过的那些）。
+       * 抽出来是因为两个地方要用：清空选择，以及关掉技能 —— 关闭必须先把已注册的
+       * 撤销掉，否则模型在技能目录里仍然看得见它。
+       */
+      const revokeApplied = useCallback(async (names) => {
+        const live = names.filter((n) => store.get().applied.includes(n))
+        if (live.length === 0) return []
+        await api('/revoke', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ sessionId: ownSessionId, names: live }),
+        })
+        const gone = new Set(live)
+        store.setApplied(store.get().applied.filter((n) => !gone.has(n)))
+        store.notifyRevoked(live)
+        return live
+      }, [store])
+
+      /**
+       * 关闭一批技能（不撤销应用，调用方按需先撤销）。
+       *
+       * 抽出来是因为四个地方要用：单个开关、全部关闭、面板「清空」、以及卡片芯片的
+       * 「全部移除」。后两个正是用户这次的诉求——点它们的意图是"这些技能别再影响我了"，
+       * 只把注册撤掉不够：开关仍是开，模型下一轮又会在技能目录里看到它们。
+       *
+       * 返回 true 表示宿主接受了这批关闭。
+       */
+      const disableSkills = useCallback(async (names) => {
+        const list = names.filter((n) => typeof n === 'string' && n)
+        if (list.length === 0) return true
+        setEnableOverrides((prev) => {
+          const next = { ...prev }
+          for (const n of list) next[n] = false
+          return next
+        })
+        try {
+          // Shares the module-level writer with the composer chips, so the two
+          // surfaces can never drift apart on what "turn off" sends.
+          const sessionId = ownSessionId
+          const res = await api('/switch', {
             method: 'POST', headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ sessionId: store.get().sessionId, names: appliedSelected }),
-          }).then(() => {
-            const gone = new Set(appliedSelected)
-            store.setApplied(store.get().applied.filter((n) => !gone.has(n)))
-            store.notifyRevoked(appliedSelected)
-            showToast(`${t('revoke')} × ${appliedSelected.length}`)
-          }).catch((err) => showToast(`${t('revokeFail')}${err.message}`))
+            body: JSON.stringify({ sessionId, names: list, enabled: false }),
+          })
+          const failed = (res.results || []).filter((r) => !r.ok)
+          if (failed.length > 0) showToast(`${t('switchFail')}${failed[0].reason || ''}`)
+          else if (res.sessionId === null) showToast(t('switchStored'))
+          return failed.length === 0
+        } catch (err) {
+          // A failed write must roll the optimistic state back, or the card
+          // would show "off" for a skill the host still considers on.
+          setEnableOverrides((prev) => {
+            const next = { ...prev }
+            for (const n of list) delete next[n]
+            return next
+          })
+          showToast(`${t('switchFail')}${err.message}`)
+          return false
         }
-      }, [selected, store, t, showToast])
+      }, [store, t, showToast])
+
+      /**
+       * 「清空」：取消勾选 + 摘掉已应用的注册 + **关掉这些技能**。
+       *
+       * 第三步是用户明确要求的：清空的语义是"这批技能不要了"，而不只是"这一轮不用"。
+       * 只 revoke 的话开关仍是开，模型下一轮又在目录里看到它们。
+       */
+      const clear = useCallback(() => {
+        const names = [...selected]
+        setSelected(new Set())
+        if (names.length === 0) return
+        ;(async () => {
+          try {
+            await revokeApplied(names)
+            await disableSkills(names)
+            showToast(`${t('toastDisabled')} × ${names.length}`)
+          } catch (err) {
+            showToast(`${t('revokeFail')}${err.message}`)
+          }
+        })()
+      }, [selected, revokeApplied, disableSkills, t, showToast])
 
       // One-way sync from the composer popover: when chips revoke skills from
       // the session (single × or "remove all"), drop the same names from this
@@ -3372,32 +3792,180 @@ ${draft}`
         updateStats(name, { category: cat })
       }, [updateStats])
 
-      const applyFn = useCallback(async () => {
+      /**
+       * 开 / 关一个技能。
+       *
+       * 关闭要做两件事，顺序不能反：先把已应用的注册撤销掉，再让宿主加影子层。
+       * 技能一旦 register 进会话，模型就一直看得见它；只加影子层并不会把它从
+       * 已经注入的技能目录里拿走，所以"关了还在用"正是漏掉这一步的样子。
+       */
+      const setEnabled = useCallback(async (name, enabled) => {
+        setEnableOverrides((prev) => ({ ...prev, [name]: enabled }))
+        // 关闭必须先撤销：技能已 register 进会话的话，只加影子并不会把它从模型
+        // 已经读到的目录里拿走。
+        if (!enabled) {
+          await revokeApplied([name])
+          const ok = await disableSkills([name])
+          if (ok) showToast(`${t('toastDisabled')} ${name}`)
+          return
+        }
+        try {
+          const res = await api('/switch', {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ sessionId: ownSessionId, names: [name], enabled: true }),
+          })
+          const failed = (res.results || []).filter((r) => !r.ok)
+          if (failed.length > 0) showToast(`${t('switchFail')}${failed[0].reason || ''}`)
+          else showToast(`${t('toastEnabled')} ${name}`)
+        } catch (err) {
+          setEnableOverrides((prev) => { const next = { ...prev }; delete next[name]; return next })
+          showToast(`${t('switchFail')}${err.message}`)
+        }
+      }, [store, t, showToast, revokeApplied, disableSkills])
+
+      /**
+       * 批量开关。基准是 merged（本机全部技能），不是 filtered —— "全部开启"在
+       * 关闭的卡被隐藏时必须能把它们也开回来，用 filtered 会一张都开不到。
+       */
+      const setAllEnabled = useCallback(async (enabled) => {
+        const names = merged.filter((s) => s.enabled !== enabled).map((s) => s.name)
+        if (names.length === 0) return
+        setBusy(true)
+        try {
+          if (!enabled) {
+            await revokeApplied(names)
+            const ok = await disableSkills(names)
+            if (ok) showToast(`${t('toastDisabled')} × ${names.length}`)
+            return
+          }
+          setEnableOverrides((prev) => {
+            const next = { ...prev }
+            for (const n of names) next[n] = true
+            return next
+          })
+          const res = await api('/switch', {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ sessionId: ownSessionId, names, enabled: true }),
+          })
+          const failed = (res.results || []).filter((r) => !r.ok)
+          if (failed.length > 0) showToast(t('switchPartial'))
+          else showToast(`${t('toastEnabled')} × ${names.length}`)
+        } catch (err) {
+          setEnableOverrides((prev) => {
+            const next = { ...prev }
+            for (const n of names) delete next[n]
+            return next
+          })
+          showToast(`${t('switchFail')}${err.message}`)
+        } finally { setBusy(false) }
+      }, [merged, store, t, showToast, revokeApplied, disableSkills])
+
+      // 关闭的技能**可以**勾选并应用：开关管的是"常驻可见性"，应用是显式的一次
+      // 性按需装载，两者不互斥。宿主端在 /introduce 里会临时抬起它的影子，本轮
+      // 结束再恢复。所以这里不再把关闭的技能从待应用列表里踢掉——那是旧行为，
+      // 正是它让"选一个关闭的 skill 应用到本轮"静默失效。
+      // （保留一个空注释位，说明这个决定是刻意的，不是漏掉的。）
+
+      /**
+       * 应用到本轮 / 应用到本会话，共用这一段。
+       *
+       * mode 决定可用范围：
+       *   'turn'    — 宿主 HOLD 到本轮结束才释放（一次性，默认）
+       *   'session' — 本会话内一直在，关会话才移除
+       * 注册和影子处理两条路完全一样——两种模式都需要模型在本轮看到技能。
+       */
+      /**
+       * STEP 1 — tag the ticked cards with a scope. Nothing is applied here.
+       *
+       * The ticks are CONSUMED by this press (the user asked for exactly that):
+       * the cards keep a visible 「本轮」/「本会话」 tag, the checkboxes clear, and
+       * the user can go on ticking more cards for the other scope. Applying is
+       * a separate, deliberate act (see dealFn).
+       */
+      const stageFn = useCallback((mode) => {
+        const scope = mode === 'session' ? 'session' : 'turn'
         const names = [...selected]
         if (names.length === 0) return
+        setStaged((prev) => {
+          const next = new Map(prev)
+          // A later press RETAGS rather than duplicating: one card can only have
+          // one scope, and the last press is the one the user meant.
+          for (const n of names) next.set(n, scope)
+          return next
+        })
+        setSelected(new Set())
+      }, [selected])
+
+      /** Drop one card's staged tag (the tag's own × button). */
+      const unstage = useCallback((name) => {
+        setStaged((prev) => {
+          if (!prev.has(name)) return prev
+          const next = new Map(prev)
+          next.delete(name)
+          return next
+        })
+      }, [])
+
+      /** STEP 2 — actually apply everything staged, then play the reveal. */
+      const dealFn = useCallback(async () => {
+        const entries = [...staged.entries()]
+        if (entries.length === 0) return
+        // This panel's OWN session. There is deliberately no /active-session
+        // fallback: the host answers null there (it refuses to elect a session),
+        // and electing one was how an apply landed on a chat the user was not
+        // looking at. No session → say so, do not guess.
+        const sessionId = ownSessionId
+        if (!sessionId) { showToast(t('noSession')); return }
         setBusy(true); setError('')
+        const okNames = []
+        let failed = 0
         try {
-          let sessionId = store.get().sessionId
-          if (!sessionId) {
-            try { const a = await api('/active-session'); sessionId = a.sessionId || undefined } catch { /* ignore */ }
+          // One request per scope, so a mixed batch keeps each card's own scope.
+          const byScope = new Map()
+          for (const [name, scope] of entries) {
+            if (!byScope.has(scope)) byScope.set(scope, [])
+            byScope.get(scope).push(name)
           }
-          if (!sessionId) { showToast(t('noSession')); setBusy(false); return }
-          const res = await api('/introduce', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ sessionId, names }),
-          })
-          const okCount = (res.results || []).filter((r) => r.ok).length
-          showToast(okCount === names.length ? t('toastApplied') : t('toastAppliedSome'))
-          const okNames = (res.results || []).filter((r) => r.ok).map((r) => r.name)
+          for (const [scope, names] of byScope) {
+            try {
+              const res = await api('/introduce', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ sessionId, names, mode: scope }),
+              })
+              const results = res.results || []
+              for (const r of results) {
+                if (r.ok) okNames.push({ name: r.name, scope })
+                else failed += 1
+              }
+            } catch (err) {
+              failed += names.length
+              setError(`${t('toastFail')}${err.message}`)
+            }
+          }
+          const appliedNames = okNames.map((r) => r.name)
+          if (appliedNames.length === 0) return
+          showToast(failed > 0 ? t('toastAppliedSome')
+            : (okNames.some((r) => r.scope === 'turn') ? t('toastAppliedTurn') : t('toastApplied')))
           // Capture each applied card's on-screen position BEFORE the panel is
           // torn down, so the reveal can fly it from where it actually sat.
-          const cards = captureCardRects(gridRef.current, okNames)
-          // Confirm in the composer area WHICH skills entered this session, so
-          // the user knows the apply actually landed on the active session.
-          // Merge into (not replace) the applied list — the panel can also be
-          // opened from settings, where an earlier apply already landed.
-          store.setApplied([...new Set([...store.get().applied, ...okNames])])
+          const cards = captureCardRects(gridRef.current, appliedNames)
+          // Confirm in the composer area WHICH skills entered this session.
+          // Only when this panel IS the composer's session: a root-scope settings
+          // mount applying to chat B must not relabel the chips chat A is showing.
+          if (store.get().sessionId === ownSessionId) {
+            const mergedApplied = [...new Set([...store.get().applied, ...appliedNames])]
+            const mergedModes = { ...(store.get().appliedModes || {}) }
+            for (const { name, scope } of okNames) mergedModes[name] = scope
+            store.setApplied(mergedApplied, mergedModes)
+          }
+          // What actually landed leaves the staging area; a failed card stays
+          // tagged so the user can retry without re-picking it.
+          setStaged((prev) => {
+            const next = new Map(prev)
+            for (const n of appliedNames) next.delete(n)
+            return next
+          })
           onApplyDone && onApplyDone() // close the modal AFTER capturing rects
           // Gacha reveal: card-backs fly in over the live session, then flip
           // face-up one by one (SR cards flash). Handed to the STORE (not panel
@@ -3410,12 +3978,13 @@ ${draft}`
             // `merged` carries the derived fields (uses / category / custom);
             // raw `skills` only nests them under stats.*, which made the
             // reveal cards show ATK 0.
-            const meta = merged.filter((s) => okNames.includes(s.name))
+            const meta = merged.filter((s) => appliedNames.includes(s.name))
             store.triggerGacha({ cards, meta, catDefs })
           }
-          return
-        } catch (err) { setError(`${t('toastFail')}${err.message}`) } finally { setBusy(false) }
-      }, [selected, store, t, showToast, onApplyDone, merged])
+        } catch (err) {
+          setError(`${t('toastFail')}${err.message}`)
+        } finally { setBusy(false) }
+      }, [staged, store, t, showToast, onApplyDone, merged, ownSessionId, catDefs])
 
       return e('div', { className: `dsh-sc-panel${fx ? ' fx' : ''}${filtered.length ? ' has-cards' : ''}`, 'data-layout': layout },
         e('div', { className: 'dsh-sc-search-row' },
@@ -3445,12 +4014,69 @@ ${draft}`
             }, t('layoutFan'))),
           e('button', { type: 'button', className: 'dsh-sc-managecats', onClick: () => setCatMgrOpen(true), title: t('manageCats') }, t('manageCats')),
           e('button', { type: 'button', className: 'dsh-sc-managecats', onClick: () => setI18nOpen(true), title: '中文化' }, '中文化'),
-          e('button', { className: 'dsh-sc-apply', onClick: applyFn, disabled: busy || selected.size === 0 }, busy ? t('applying') : t('apply'))),
+          // 批量开关。放在布局切换之前，与"全选/清空"分开一组：那两个动的是选择，
+          // 这两个动的是可见性，混在一起会让人以为"全部关闭"只是取消勾选。
+          e('button', {
+            type: 'button', className: 'dsh-sc-bulkoff',
+            onClick: () => setAllEnabled(false), disabled: busy || catCounts.off === merged.length,
+            title: t('offHint'),
+          }, t('disableAll')),
+          e('button', {
+            type: 'button', className: 'dsh-sc-bulkon',
+            onClick: () => setAllEnabled(true), disabled: busy || catCounts.off === 0,
+          }, t('enableAll')),
+          // 「新会话默认关闭」：一个机器级偏好，决定新对话出生时的开关状态。
+          // 与"全部关闭"不同——后者只动当前会话，这个动的是未来所有新对话。
+          defaultOff === null ? null : e('button', {
+            type: 'button',
+            className: 'dsh-sc-defoff' + (defaultOff ? ' active' : ''),
+            'aria-pressed': defaultOff ? 'true' : 'false',
+            title: t('defaultOffHint'),
+            onClick: () => toggleDefaultOff(),
+          }, defaultOff ? t('defaultOffOn') : t('defaultOffOff')),
+          // 两种作用域 = 给选中的卡「打标签」，不应用、不播动画。
+          // 打完标签勾选清空，可以继续选下一批打另一种标签。
+          e('button', {
+            type: 'button', className: 'dsh-sc-apply',
+            onClick: () => stageFn('turn'), disabled: busy || selected.size === 0,
+            title: t('applyTurnHint'),
+          }, t('apply')),
+          e('button', {
+            type: 'button', className: 'dsh-sc-apply dsh-sc-apply-session',
+            onClick: () => stageFn('session'), disabled: busy || selected.size === 0,
+            title: t('applySessionHint'),
+          }, t('applySession')),
+          // 发卡：真正把已打标签的卡应用进会话，并在这时才播发卡动画。
+          // 没有待发卡时禁用，按钮上带数量，用户一眼知道攒了几张。
+          e('button', {
+            type: 'button', className: 'dsh-sc-deal',
+            onClick: () => { void dealFn() },
+            disabled: busy || staged.size === 0,
+            title: t('dealHint'),
+          }, busy ? t('applying') : (staged.size > 0 ? `${t('deal')} · ${staged.size}` : t('deal'))),
+          // 本会话内已生效的技能，直接写在卡组上方 —— 用户要求在这里能看到
+          // "现在哪些卡可用"，以及各自是本轮还是本会话。
+          // 本会话内已生效的技能，直接写在卡组上方 —— 在这里就能看到
+          // "现在哪些卡可用"，以及各自是本轮还是本会话。
+          appliedNow.length ? e('div', { className: 'dsh-sc-live', title: t('liveTitle') },
+            e('span', { className: 'dsh-sc-live-label' }, t('liveTitle')),
+            appliedNow.filter((s) => liveModes[s.name] !== 'session').length
+              ? e('span', { className: 'dsh-sc-live-turn' },
+                  `🔥 ${t('liveTurn')}: ${appliedNow.filter((s) => liveModes[s.name] !== 'session')
+                    .map((s) => s.custom?.i18n?.zh || s.name).join(' · ')}`) : null,
+            appliedNow.filter((s) => liveModes[s.name] === 'session').length
+              ? e('span', { className: 'dsh-sc-live-session' },
+                  `📌 ${t('liveSession')}: ${appliedNow.filter((s) => liveModes[s.name] === 'session')
+                    .map((s) => s.custom?.i18n?.zh || s.name).join(' · ')}`) : null,
+          ) : null),
         error ? e('div', { className: 'dsh-sc-err', role: 'alert' }, error) : null,
         e(AppliedChips, { store, t }),
         skills === null
           ? e('div', { className: 'dsh-sc-empty' }, t('loading'))
           : filtered.length === 0
+            // Nothing to show is now purely a SEARCH/FILTER outcome: disabled
+            // skills are always in the grid, so an empty deck can only mean the
+            // query or the category chip excluded everything.
             ? e('div', { className: 'dsh-sc-empty' },
                 e('div', null, skills.length === 0 ? t('empty') : t('noMatch')),
                 e('div', { className: 'dsh-sc-empty-hint' }, skills.length === 0 ? t('emptyHint') : t('noMatchHint')),
@@ -3471,22 +4097,30 @@ ${draft}`
                   ? e(CardWall, {
                       skills: filtered, selected, t, catDefs,
                       frozen: !!editing,
+                      appliedNames: appliedNow.map((s) => s.name), liveModes,
+                      stagedModes: stagedModes,
+                      onUnstage: unstage,
                       onToggle: toggle, onSetImage: openImageForm,
                       onTranslate: openTranslate,
                       onArtPrompt: openArtPrompt,
                       onResetI18n: runResetI18n,
                       onStar: toggleStar,
                       onCategory: setCardCategory,
+                      onEnabled: setEnabled,
                     })
                   : e(CardFan, {
                       skills: filtered, selected, t, catDefs,
                       initialFocus: focusRef.current,
                       onFocusChange: noteFocus,
+                      appliedNames: appliedNow.map((s) => s.name), liveModes,
+                      stagedModes: stagedModes,
+                      onUnstage: unstage,
                       onToggle: toggle, onSetImage: openImageForm,
                       onTranslate: openTranslate,
                       onArtPrompt: openArtPrompt,
                       onResetI18n: runResetI18n,
                       onStar: toggleStar,
+                      onEnabled: setEnabled,
                       onCategory: setCardCategory,
                     })),
         catMgrOpen ? e(CategoryManager, {
@@ -3563,6 +4197,10 @@ ${draft}`
     }
 
     function Modal({ store, t }) {
+      // The modal is the composer's panel, so it answers for the composer's
+      // session. Captured as a plain value (not read lazily inside the panel) so
+      // an open modal cannot switch sessions under the user mid-interaction.
+      const sessionId = useStore(store).sessionId
       return e('div', { className: 'dsh-sc-backdrop', onClick: (ev) => { if (ev.target === ev.currentTarget) store.close() } },
         e('div', { className: 'dsh-sc-modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': t('title') },
           e('div', { className: 'dsh-sc-head' },
@@ -3570,7 +4208,7 @@ ${draft}`
               e('span', { className: 'dsh-sc-title-text' }, t('title'))),
             e('button', { className: 'dsh-sc-close', onClick: () => store.close(), 'aria-label': t('close') }, '×')),
           e(PanelBoundary, null,
-            e(SkillsPanel, { store, t, onApplyDone: () => store.close(), onRequestClose: () => store.close() }))),
+            e(SkillsPanel, { store, t, sessionId, onApplyDone: () => store.close(), onRequestClose: () => store.close() }))),
       )
     }
 
@@ -3586,6 +4224,11 @@ ${draft}`
      */
     function AppliedChips({ store, t }) {
       const applied = useStore(store).applied
+      // How each chip was applied. A turn-scoped one clears itself after the
+      // next message; a session-scoped one survives until the chat closes. The
+      // chips must SAY which is which, or "it disappeared on its own" looks
+      // like a bug.
+      const modes = useStore(store).appliedModes || {}
       const [leaving, setLeaving] = useState(() => new Set())
       const [busy, setBusy] = useState(false)
       const [open, setOpen] = useState(false)
@@ -3619,6 +4262,12 @@ ${draft}`
       // Auto-collapse when the list empties out (nothing to show).
       useEffect(() => { if (open && applied.length === 0 && leaving.size === 0) setOpen(false) }, [open, applied.length, leaving.size])
       if (applied.length === 0 && leaving.size === 0) return null
+      /**
+       * 移除这些技能，并**关掉它们**。
+       *
+       * 关掉是关键：光 /revoke 只是把注册从本会话摘掉，开关仍是开——模型下一轮
+       * 又会在技能目录里看到它们，用户点的「移除 / 全部移除」就没落到实处。
+       */
       const revokeNames = async (names) => {
         if (busy || names.length === 0) return
         for (const n of names) setLeaving((prev) => new Set(prev).add(n))
@@ -3630,15 +4279,23 @@ ${draft}`
         }), 300)
         try {
           setBusy(true)
+          const sessionId = store.get().sessionId
           await api('/revoke', {
             method: 'POST', headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ sessionId: store.get().sessionId, names }),
+            body: JSON.stringify({ sessionId, names }),
           })
           const gone = new Set(names)
           store.setApplied(store.get().applied.filter((n) => !gone.has(n)))
           // Tell the panel to drop the same names from its selection — the
           // popover is the single writer of revocations (one-way sync).
           store.notifyRevoked(names)
+          // Turn them off too. A failure here is reported but must not undo the
+          // revoke: the skills ARE out of the session either way.
+          try {
+            await switchOff(sessionId, names)
+          } catch (err) {
+            console.error('[skill-cards] switch-off after revoke failed:', err)
+          }
         } catch (err) {
           console.error('[skill-cards] revoke failed:', err)
         } finally { setBusy(false) }
@@ -3664,13 +4321,22 @@ ${draft}`
           e('div', { className: 'dsh-sc-chip-pop-list' },
             applied.map((name) => {
               const ca = TINT_ACCENTS[tintIndex(name)] || '#6366F1'
+              // WHICH SCOPE this chip has. A turn-scoped apply disappears on its
+              // own after the next message; a session-scoped one lasts until the
+              // chat closes. Without this label the two looked identical, so
+              // "why did that one vanish?" was unanswerable from the UI.
+              const mode = modes[name]
+              const modeLabel = mode === 'session' ? t('scopeSession') : (mode === 'turn' ? t('scopeTurn') : null)
               return e('span', {
                 key: name, className: `dsh-sc-chip dsh-sc-chip-row${leaving.has(name) ? ' out' : ''}`,
                 style: { '--chip-ca': ca }, title: name,
               },
                 e('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 5, overflow: 'hidden' } },
                   e('span', { className: 'dsh-sc-chip-dot', 'aria-hidden': 'true' }),
-                  e('span', { className: 'dsh-sc-chip-name' }, zhMap[name] || name)),
+                  e('span', { className: 'dsh-sc-chip-name' }, zhMap[name] || name),
+                  modeLabel === null ? null : e('span', {
+                    className: `dsh-sc-chip-mode${mode === 'session' ? ' is-session' : ' is-turn'}`,
+                  }, modeLabel)),
                 e('button', {
                   className: 'dsh-sc-chip-x', type: 'button', role: 'menuitem',
                   'aria-label': `${t('revoke')}: ${name}`,
@@ -3705,16 +4371,23 @@ ${draft}`
         // to fall back to its shared "last explicit session" — otherwise two open
         // windows show each other's chips.
         const ownSessionId = useOwnSessionId(props)
-        useEffect(() => {
-          if (ownSessionId) store.setSession(ownSessionId)
-        }, [store, ownSessionId])
+        // ALWAYS write it through, including `undefined`. The guard used to be
+        // `if (ownSessionId)`, which left the store holding the PREVIOUS chat's id
+        // whenever this mount rendered without one (a blank/new chat, or a slot
+        // that has not resolved its session yet) — so every request from that
+        // point named the old session and the two chats bled into each other.
+        useEffect(() => { store.setSession(ownSessionId) }, [store, ownSessionId])
         useEffect(() => {
           let disposed = false
-          const q = ownSessionId ? `?sessionId=${encodeURIComponent(ownSessionId)}` : ''
+          // No id → ask nothing. The host would answer "empty" now, but a request
+          // that cannot name its session must not be able to overwrite this
+          // window's applied list with an empty one either.
+          if (!ownSessionId) { store.setApplied([], {}); return () => { disposed = true } }
+          const q = `?sessionId=${encodeURIComponent(ownSessionId)}`
           ;(async () => {
             try {
               const ap = await api(`/applied${q}`)
-              if (!disposed) store.setApplied(ap.skills || [])
+              if (!disposed) store.setApplied(ap.skills || [], ap.modes)
             } catch { /* no session / no applied — chips stay hidden */ }
           })()
           return () => { disposed = true }
@@ -3749,76 +4422,88 @@ ${draft}`
      * button is matched by its aria-label. Enter during IME composition and
      * Shift+Enter insert a newline instead of submitting, so both are filtered.
      */
+    /**
+     * Keep the composer's chip list honest about what the session holds.
+     *
+     * There is deliberately NO revoke here. This function used to revoke every
+     * applied skill on the send gesture (capture-phase Enter / the primary
+     * button). That is a race the user loses: the gesture fires before the agent
+     * has read its skill catalog for the turn, so the skills the user just
+     * applied are unregistered out from under the very message they were applied
+     * for — "点击应用，本轮要能运用" failed exactly here.
+     *
+     * The one-shot release now lives in the host, on `agent/status` → 'idle':
+     * the apply is HELD across the turn that uses it and released the moment
+     * that turn ends, which is after the skills were read and before the next
+     * turn assembles its catalog. This side only polls /applied, so the chips
+     * follow the host's real state instead of guessing at it.
+     */
     function watchComposerSubmit(store) {
       if (typeof document === 'undefined') return undefined
       let busy = false
+      let disposed = false
+      let timer = null
 
-      /** Revoke every applied skill once, then clear the chips. */
-      const fire = () => {
-        const names = store.get().applied
-        if (names.length === 0 || busy) return
-        // A second submit while the first is still in flight is not a new send.
-        busy = true
+      /** Adopt the host's applied set; a shrinking set means a turn consumed it. */
+      const sync = () => {
         const sessionId = store.get().sessionId
-        api('/revoke', { method: 'POST', body: JSON.stringify({ sessionId, names }) })
-          .then(() => {
-            store.setApplied([])
-            store.notifyRevoked(names)
+        if (busy) return
+        // A poll that cannot name its session must not run: the host answers an
+        // id-less /applied as empty by design, and adopting that empty answer
+        // would silently drop every chip this window is showing.
+        if (!sessionId) return
+        busy = true
+        // Snapshot the revision this request was issued against. Any local
+        // write while it is in flight makes the answer stale, and a stale
+        // answer that happens to be SHORTER would be misread as a spent apply —
+        // revoking a skill the user just added. Discard those instead.
+        const issuedRev = store.appliedRev()
+        const q = `?sessionId=${encodeURIComponent(sessionId)}`
+        api(`/applied${q}`)
+          .then((ap) => {
+            if (store.appliedRev() !== issuedRev) return
+            // The window may have switched chats while this was in flight; a
+            // late answer for the OLD chat must never land on the new one.
+            if (store.get().sessionId !== sessionId) return
+            const names = Array.isArray(ap.skills) ? ap.skills : []
+            const before = store.get().applied
+            // The hold is spent when the host drops names it was holding.
+            const spent = before.filter((n) => !names.includes(n))
+            if (spent.length > 0) store.notifyRevoked(spent)
+            store.setApplied(names, ap.modes)
           })
-          // A failed revoke must leave the chips alone: claiming the skills are
-          // gone when the host still holds them would be a lie.
+          // A failed poll must not clear the chips: claiming the skills are gone
+          // while the host still holds them would be a lie.
           .catch(() => { /* keep state; the chips stay accurate */ })
           .finally(() => { busy = false })
       }
 
-      const onKeyDown = (ev) => {
-        if (ev.key !== 'Enter') return
-        // Shift+Enter inserts a newline; Enter mid-composition picks a candidate.
-        if (ev.shiftKey || ev.isComposing || ev.keyCode === 229) return
-        if (!ev.target?.closest?.('[data-composer-input]')) return
-        fire()
+      /**
+       * Watch only while an apply is outstanding.
+       *
+       * This is how the UI learns that the host released a spent apply; it is
+       * NOT the release itself (the host owns that, on `agent/status` → 'idle').
+       * The loop is started by the store when the applied set becomes non-empty
+       * and stopped when it empties, so an idle composer never polls and the
+       * timer can never hold the process open.
+       */
+      const stop = () => { if (timer !== null) { clearTimeout(timer); timer = null } }
+      const tick = () => {
+        timer = null
+        if (disposed) return
+        if (store.get().applied.length === 0) return
+        sync()
+        timer = setTimeout(tick, APPLIED_POLL_MS)
+        if (typeof timer?.unref === 'function') timer.unref()
       }
-
-      // The primary button calls the same `keyboard.submit(mode, 'click')` path as
-      // Enter, so it must revoke too. The host gives it no data attribute, and
-      // BOTH the send and the stop button carry the same `primary` class — so the
-      // match is anchored on our own composer entry instead:
-      //   1. the clicked button must live in the same input bar as our button
-      //      (walk up from `.dsh-sc-composer` until an ancestor contains it),
-      //   2. it must look primary (class) or carry a send label,
-      //   3. it must not be the stop button (cancelling a turn is not a submit).
-      const STOP_HINT = /stop|停止|中止|取消/i
-      const SUBMIT_LABELS = new Set([
-        '发送消息', '排队发送', '插话发送', '发送',
-        'Send message', 'Send', 'Queue message', 'Send as steer', 'Steer', 'Send as follow-up',
-      ])
-      const sameInputBar = (btn) => {
-        const mine = document.querySelector('.dsh-sc-composer')
-        if (!mine) return true // cannot verify — do not block the feature
-        for (let n = mine.parentElement; n && n !== document.body; n = n.parentElement) {
-          if (n.contains(btn)) return true
-        }
-        return false
-      }
-      const onDocClick = (ev) => {
-        const btn = ev.target?.closest?.('button')
-        if (!btn || btn.disabled) return
-        const label = (btn.getAttribute('aria-label') || '').trim()
-        if (STOP_HINT.test(label)) return
-        const looksPrimary = /primary/i.test(String(btn.className || '')) || SUBMIT_LABELS.has(label)
-        if (!looksPrimary) return
-        if (!sameInputBar(btn)) return
-        fire()
-      }
-
-      // Capture phase for the key: the host's own keymap stops propagation on
-      // Enter, so a bubble-phase listener on document would never see the event.
-      document.addEventListener('keydown', onKeyDown, true)
-      document.addEventListener('click', onDocClick, true)
-      return () => {
-        document.removeEventListener('keydown', onKeyDown, true)
-        document.removeEventListener('click', onDocClick, true)
-      }
+      const unsub = store.subscribe(() => {
+        if (disposed) return
+        if (store.get().applied.length > 0) { if (timer === null) tick() }
+        else stop()
+      })
+      // A set applied before this watcher mounted still needs watching.
+      if (store.get().applied.length > 0) tick()
+      return () => { disposed = true; stop(); unsub() }
     }
 
     function Overlay({ store, t }) {
@@ -3869,15 +4554,18 @@ ${draft}`
           // render", the slot's error boundary swallows it, and the whole
           // "设置 → 技能" section renders blank.
           const sessionId = useOwnSessionId(props)
-          useEffect(() => {
-            if (sessionId) store.setSession(sessionId)
-          }, [sessionId])
+          // NO store.setSession HERE. `settings.section` is a ROOT-scope slot: it
+          // has no session of its own, so writing one (or writing `undefined`)
+          // into the store trampled the id the composer had just claimed — the
+          // settings panel and the composer would take turns owning the store,
+          // and whichever lost read the other chat's state. The id is passed to
+          // the panel directly instead, so neither mount can overwrite the other.
+          //
           // The skills manager renders inline — this is the replacement for
-          // the removed sidebar entry. The session seed keeps "应用到本次会话"
-          // targeting the session the user is actually viewing.
+          // the removed sidebar entry.
           return e('div', { className: 'dsh-sc-root' },
             e(PanelBoundary, null,
-              e(SkillsPanel, { store, t, onApplyDone: () => {}, onRequestClose: () => {} })))
+              e(SkillsPanel, { store, t, sessionId, onApplyDone: () => {}, onRequestClose: () => {} })))
         }, 'settings section')
 
       register('conversation.input.right',

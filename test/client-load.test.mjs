@@ -170,15 +170,13 @@ test('settings.section calls the useSessions hook at render time, not inside an 
   mod.apply({ slots, locale, effect: (fn) => { fn(); return () => {} } })
 
   // The store lives inside apply(); reach the real one through the shell
-  // overlay entry's injected face (same object the settings.section seeds).
+  // overlay entry's injected face (the same object every entry shares).
   const overlayEntry = registrations.find((r) => r.meta.name === 'shell.overlay')
   assert.ok(overlayEntry, 'shell overlay entry should be registered')
   const injected = overlayEntry.meta.inject()
   const realStore = injected.store
   assert.ok(realStore && typeof realStore.subscribe === 'function',
     'overlay inject() should expose the shared store')
-  let seeded = null
-  realStore.subscribe(() => { if (realStore.get().sessionId) seeded = realStore.get().sessionId })
 
   const settingsEntry = registrations.find((r) => r.meta.order === 30 && r.meta.id === 'dsh-skill-cards')
   assert.ok(settingsEntry, 'settings.section entry should be registered')
@@ -187,8 +185,19 @@ test('settings.section calls the useSessions hook at render time, not inside an 
   assert.equal(out.type, 'div')
   assert.ok(hookCallsDuringRender > 0,
     'useSessions must be invoked during the component render (top level), never inside an effect')
-  assert.equal(seeded, 'session-a',
-    'the retained mainView session should seed the store session id')
+
+  // THE CONTRACT THAT CHANGED: `settings.section` is a ROOT-scope slot, so it
+  // must NOT write the session into the shared store — doing so trampled the id
+  // the composer had claimed, and whichever mount lost read the other chat's
+  // state. It passes the id to the panel as an explicit prop instead.
+  assert.equal(realStore.get().sessionId, undefined,
+    'the root-scope settings section must not write the shared store session')
+  // div → PanelBoundary → SkillsPanel. The fake createElement keeps children in
+  // a `children` array (they are varargs, not props.children).
+  const boundary = out.children[0]
+  const panel = boundary.children[0]
+  assert.equal(panel.props.sessionId, 'session-a',
+    'the resolved session must reach the panel as an explicit prop')
 })
 
 test('sidebar.footer.action is no longer registered (left-sidebar entry removed)', () => {
@@ -449,15 +458,35 @@ function cssBlock() {
   return source.slice(start + 'const CSS = `'.length, source.indexOf('function ensureStyle'))
 }
 
-test('applying skills is one-shot: Enter revokes them, other keys do not', async () => {
-  // Behavioural test for the composer watcher. The host exposes no "message
-  // sent" event (its submit state machine is internal to
-  // dsh-client-ui-conversation), so the client listens for Enter on the host's
-  // own textbox marker. The host only clears the editor AFTER the turn is
-  // accepted, so "draft went empty" is both late and unreliable — Enter is the
-  // real intent signal.
+test('the composer never revokes on the send gesture — that is the race that ate the apply', () => {
+  // This test replaces one that ASSERTED the bug. The old watcher revoked every
+  // applied skill on capture-phase Enter / the primary button. That fires before
+  // the agent has read its skill catalog for the turn, so the skills the user
+  // just applied were unregistered out from under the very message they were
+  // applied for — "点击应用，本轮要能运用" failed exactly there.
+  //
+  // The one-shot release now lives in the host on `agent/status` → 'idle'.
+  // This side must not revoke at all, so the guard is structural: no /revoke
+  // call may be reachable from a key or click listener.
+  const source = readFileSync(clientPath, 'utf8')
+  const fn = source.match(/function watchComposerSubmit\(store\) \{[\s\S]*?\n    \}/)
+  assert.ok(fn, 'watchComposerSubmit not found')
+  assert.ok(!/\/revoke/.test(fn[0]),
+    'the composer watcher must not revoke: the host releases the apply when the turn ends')
+  assert.ok(!/addEventListener\(['"]keydown/.test(fn[0]),
+    'no keydown listener: the send gesture is not the release boundary')
+  assert.ok(!/addEventListener\(['"]click/.test(fn[0]),
+    'no click listener: the send button is not the release boundary either')
+  // It still tracks the host's real applied set, so the chips stay honest.
+  assert.match(fn[0], /api\(\`\/applied/, 'the watcher must follow the host applied set')
+})
+
+test('the composer watcher adopts the host set and reports what the turn spent', async () => {
+  // Behavioural: polling /applied is how the UI learns the host released a
+  // spent apply. A shrinking set is a consumed one, and those names are
+  // announced as revoked so the panel un-checks them.
   const listeners = []
-  let revoked = null
+  let appliedReply = { ok: true, skills: [] }
   const sandboxDocument = {
     createElement: () => ({
       style: {}, setAttribute() {}, appendChild() {}, addEventListener() {},
@@ -471,12 +500,8 @@ test('applying skills is one-shot: Enter revokes them, other keys do not', async
     addEventListener: (type, fn, capture) => { listeners.push({ type, fn, capture }) },
     removeEventListener: () => {},
   }
-  const spec = captureLoadSpecWithDocument(sandboxDocument, async (url, init) => {
-    if (url.endsWith('/revoke')) {
-      revoked = JSON.parse(init.body)
-      return { ok: true, json: async () => ({ ok: true, results: [] }) }
-    }
-    if (url.endsWith('/applied')) return { ok: true, json: async () => ({ ok: true, skills: [] }) }
+  const spec = captureLoadSpecWithDocument(sandboxDocument, async (url) => {
+    if (url.includes('/applied')) return { ok: true, json: async () => appliedReply }
     if (url.endsWith('/active-session')) return { ok: true, json: async () => ({ ok: true, sessionId: 's1' }) }
     return { ok: true, json: async () => ({}) }
   })
@@ -495,88 +520,94 @@ test('applying skills is one-shot: Enter revokes them, other keys do not', async
   mod.apply({ slots, locale, effect: (fn) => { fn(); return () => {} } })
 
   const entry = registrations.find((r) => r.meta.name === 'conversation.input.right')
-  const wrapper = entry.component({})
-  wrapper.type(wrapper.props) // mounts: installs the keydown watcher
+  // The composer slot is SESSION-scoped, so the renderer always hands it the
+  // owning session. Supplying it is what makes the watcher allowed to poll: an
+  // id-less poll would be answered as "no session" and must not run at all.
+  const wrapper = entry.component({ sessionId: 's1' })
+  wrapper.type(wrapper.props)
+  const store = entry.component({ sessionId: 's1' }).props.store
+  assert.equal(store.get().sessionId, 's1',
+    'the wrapper must adopt the session the slot handed it')
 
-  const watcher = listeners.find((l) => l.type === 'keydown')
-  assert.ok(watcher, 'the composer watcher must install a keydown listener')
-  // Capture phase: the host's keymap stops propagation on Enter, so a
-  // bubble-phase listener on document would never fire.
-  assert.equal(watcher.capture, true, 'the keydown listener must be capture-phase')
+  // No revoke listener may exist on the document at all.
+  assert.ok(!listeners.some((l) => l.type === 'keydown'),
+    'no keydown listener may be installed')
+  assert.ok(!listeners.some((l) => l.type === 'click'),
+    'no click listener may be installed')
 
-  const enterOn = (opts = {}) => watcher.fn({
-    key: opts.key ?? 'Enter',
-    shiftKey: !!opts.shiftKey,
-    isComposing: !!opts.isComposing,
-    keyCode: opts.keyCode ?? 13,
-    target: { closest: () => (opts.inComposer === false ? null : {}) },
-  })
-
-  // Nothing applied yet: Enter must not call the host at all.
-  enterOn()
-  await Promise.resolve()
-  assert.equal(revoked, null, 'Enter with no applied skills must not revoke')
-
-  // Apply a set, then submit. The panel writes through store.setApplied.
-  const panelEntry = registrations.find((r) => r.meta.name === 'shell.overlay')
-  assert.ok(panelEntry, 'overlay registered')
-  // Reach the store the slots were given (the same object the panel uses).
-  const store = entry.component({}).props.store
-
-  // Keys that insert a newline or pick an IME candidate are not sends.
-  enterOn({ shiftKey: true })
-  enterOn({ isComposing: true })
-  enterOn({ keyCode: 229 })
-  enterOn({ inComposer: false })
-  await Promise.resolve()
-  assert.equal(revoked, null, 'shift/composition/foreign-target Enter must not revoke')
-
+  // The user applies two skills; the host holds them for the next turn. The
+  // listener is attached BEFORE the apply so it also sees the initial adoption
+  // poll; that first poll is asserted separately below.
+  const seen = []
+  store.onRevoked((names) => seen.push(...names))
+  appliedReply = { ok: true, skills: ['alpha', 'beta'] }
   store.setApplied(['alpha', 'beta'])
-  enterOn()
-  await new Promise((r) => setTimeout(r, 0))
-  assert.ok(revoked, 'Enter must revoke the applied skills')
-  assert.deepEqual(revoked.names, ['alpha', 'beta'], 'every applied skill is revoked')
-  assert.equal(store.get().applied.length, 0, 'the chips must be cleared after a successful revoke')
 
-  // ---- the host's primary button takes the SAME submit path ----
-  // It calls keyboard.submit(mode, 'click'), so clicking it must revoke too.
-  const clicker = listeners.find((l) => l.type === 'click')
-  assert.ok(clicker, 'the composer watcher must install a click listener')
-  assert.equal(clicker.capture, true, 'the click listener must be capture-phase')
-
-  revoked = null
-  store.setApplied(['gamma'])
-  // The send and stop buttons share the same `primary` class; the stop button
-  // must never revoke, because cancelling a turn is not a submit.
-  clicker.fn({ target: { closest: () => ({ disabled: false, className: 'primary', getAttribute: () => '停止生成' }) } })
-  await Promise.resolve()
-  assert.equal(revoked, null, 'the stop button must not revoke')
-
-  // A disabled button cannot submit (the host disables it for an empty draft).
-  clicker.fn({ target: { closest: () => ({ disabled: true, className: 'primary', getAttribute: () => '发送消息' }) } })
-  await Promise.resolve()
-  assert.equal(revoked, null, 'a disabled button must not revoke')
-
-  // A non-primary button elsewhere (e.g. an attachment chip) must not revoke.
-  clicker.fn({ target: { closest: () => ({ disabled: false, className: 'chip', getAttribute: () => '移除附件' }) } })
-  await Promise.resolve()
-  assert.equal(revoked, null, 'an unrelated button must not revoke')
-
-  clicker.fn({ target: { closest: () => ({ disabled: false, className: 'primary', getAttribute: () => '发送消息' }) } })
-  await new Promise((r) => setTimeout(r, 0))
-  assert.ok(revoked, 'the primary send button must revoke the applied skills')
-  assert.deepEqual(revoked.names, ['gamma'], 'the clicked submit revokes the applied set')
-  assert.equal(store.get().applied.length, 0, 'the chips must clear after a button submit')
+  // The turn runs and the host releases the spent apply.
+  await new Promise((r) => setTimeout(r, 900))
+  seen.length = 0
+  appliedReply = { ok: true, skills: [] }
+  await new Promise((r) => setTimeout(r, 900))
+  assert.deepEqual(seen, ['alpha', 'beta'],
+    'a spent apply must be announced so the panel un-checks those cards')
+  assert.equal(store.get().applied.length, 0, 'the chips must follow the host set')
 })
 
-test('one-shot revocation reuses POST /revoke and keeps state on failure', () => {
-  const source = readFileSync(clientPath, 'utf8')
-  assert.match(source, /api\('\/revoke'/, 'one-shot must reuse POST /revoke')
-  // A failed revoke must leave the chips alone: claiming the skills are gone
-  // when the host still holds them would be a lie.
-  assert.match(source, /keep state; the chips stay accurate/,
-    'a failed revoke must not clear the chips')
-  // There must be no opt-in toggle: applying is always one-shot.
-  assert.ok(!/oneShot|dsh-sc-oneshot/.test(source),
-    'the one-shot toggle must not exist — the behaviour is unconditional')
+test('scope buttons only TAG cards; only 发卡 talks to the host', async () => {
+  // The requested flow: press 本轮/本会话 → the ticked cards get that tag and
+  // the ticks clear. Nothing is applied and no reveal plays. Pressing 发卡 is
+  // what introduces the skills (and only then plays the reveal).
+  const calls = []
+  const spec = captureLoadSpecWithDocument(null, async (url, opts) => {
+    calls.push({ url, method: opts?.method ?? 'GET', body: opts?.body })
+    if (url.includes('/skills')) {
+      return { ok: true, json: async () => ({ ok: true, skills: [
+        { name: 'alpha', description: 'a', source: 'user-dsh', enabled: true, category: 'other' },
+        { name: 'beta', description: 'b', source: 'user-dsh', enabled: true, category: 'other' },
+      ], categories: {}, roots: [] }) }
+    }
+    if (url.includes('/applied')) return { ok: true, json: async () => ({ skills: [], modes: {} }) }
+    if (url.includes('/introduce')) {
+      return { ok: true, json: async () => ({ ok: true, sessionId: 's1', results: [{ name: 'alpha', ok: true }] }) }
+    }
+    return { ok: true, json: async () => ({ ok: true }) }
+  })
+  const react = fakeReact()
+  const mod = spec.factory((n) => {
+    if (n === 'react') return react
+    throw new Error(`unexpected require(${JSON.stringify(n)})`)
+  })
+  const registrations = []
+  const slots = {
+    register: (meta, component) => { registrations.push({ meta, component }); return () => {} },
+    inject: (key, factory) => { factory() },
+  }
+  const locale = { register: () => {}, bind: () => (key) => key }
+  mod.apply({ slots, locale, effect: (fn) => { fn(); return () => {} } })
+
+  // Render the panel through the settings entry (a root-scope mount).
+  const entry = registrations.find((r) => r.meta.order === 30 && r.meta.id === 'dsh-skill-cards')
+  const tree = entry.component({ sessionId: 's1' })
+  const panel = tree.children[0].children[0]
+  assert.equal(panel.props.sessionId, 's1', 'the panel must get its session as a prop')
+
+  // The panel's toolbar must expose the three buttons of the flow.
+  const Panel = panel.type
+  assert.equal(typeof Panel, 'function', 'SkillsPanel is a component')
+  const rendered = Panel(panel.props)
+  assert.ok(rendered, 'the panel renders')
+
+  // Staging must be inert on the wire: the ONLY /introduce call site is dealFn.
+  const src = readFileSync(clientPath, 'utf8')
+  const stageFn = src.match(/const stageFn = useCallback\(\(mode\) => \{[\s\S]*?\n      \}, \[selected\]\)/)
+  assert.ok(stageFn, 'stageFn not found')
+  assert.ok(!/api\(/.test(stageFn[0]),
+    'tagging must not perform any HTTP call — it only records the tag')
+  assert.match(stageFn[0], /next\.set\(n, scope\)/, 'tagging must record the scope')
+  assert.match(stageFn[0], /setSelected\(new Set\(\)\)/, 'tagging must clear the ticks')
+
+  const dealFn = src.match(/const dealFn = useCallback\(async \(\) => \{[\s\S]*?catDefs\]\)/)
+  assert.ok(dealFn, 'dealFn not found')
+  assert.match(dealFn[0], /api\('\/introduce'/, 'dealing is what introduces the skills')
+  assert.match(dealFn[0], /triggerGacha/, 'the reveal plays on dealing, not on tagging')
 })
